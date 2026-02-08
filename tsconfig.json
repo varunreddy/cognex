@@ -1,0 +1,42 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "lib": [
+            "ES2022"
+        ],
+        "outDir": "./dist",
+        "rootDir": ".",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true
+    },
+    "include": [
+        "src/**/*",
+        "adapters/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "src/agent/components",
+        "src/agent/subagents",
+        "src/agent/core/mcp",
+        "src/agent/core/skills",
+        "src/agent/core/tools",
+        "src/agent/core/credentials.ts",
+        "src/agent/core/httpClient.ts",
+        "src/agent/core/skillFetcher.ts",
+        "src/agent/core/rateLimiter.ts",
+        "src/agent/core/persistence.ts",
+        "src/agent/core/memory.ts",
+        "src/agent/core/searchAgentConfig.ts",
+        "src/agent/core/telegramConfig.ts",
+        "src/index.ts"
+    ]
+}
