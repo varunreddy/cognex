@@ -33,7 +33,7 @@ Agent Action Loop
 ## Setup
 
 ```bash
-npx tsx adapters/search/searchConfig.ts
+npm run dev -- search setup
 ```
 
 Or set the environment variable directly:

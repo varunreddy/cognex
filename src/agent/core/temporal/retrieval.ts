@@ -28,6 +28,59 @@ const DEFAULT_PARAMS: RetrievalParams = {
 
 // RRF constant (standard value from literature)
 const RRF_K = 60;
+const STOP_WORDS = new Set([
+    "the", "a", "an", "and", "or", "but", "if", "then", "else", "to", "for", "of", "on",
+    "in", "at", "by", "with", "from", "as", "is", "are", "was", "were", "be", "been",
+    "it", "this", "that", "these", "those", "i", "you", "we", "they", "he", "she",
+    "what", "how", "why", "when", "where", "which", "should", "would", "could", "have",
+    "has", "had", "do", "does", "did", "my", "your", "our", "their", "me", "us"
+]);
+
+function extractQueryTokens(text: string): string[] {
+    const tokens = text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(t => t.length >= 3 && !STOP_WORDS.has(t));
+    return Array.from(new Set(tokens));
+}
+
+function lexicalOverlapScore(queryTokens: string[], memory: LongTermMemory): number {
+    if (queryTokens.length === 0) return 0;
+    const haystack = `${memory.content} ${memory.tags.join(" ")}`.toLowerCase();
+    let matches = 0;
+    for (const token of queryTokens) {
+        if (haystack.includes(token)) matches++;
+    }
+    return matches / queryTokens.length;
+}
+
+function rerankByRelevance(
+    query: string,
+    results: MemorySearchResult[],
+    params: Partial<RetrievalParams> = {}
+): MemorySearchResult[] {
+    const queryTokens = extractQueryTokens(query);
+    if (results.length === 0) return results;
+
+    const scored = results.map(result => {
+        const overlap = lexicalOverlapScore(queryTokens, result.memory);
+        const retrievalWeight = computeRetrievalWeight(result.memory, params);
+        const semantic = Math.max(0, result.similarity || 0);
+
+        // Blend semantic, retrieval strength, and lexical query alignment.
+        // We keep lexical lower than semantic to avoid BM25-only keyword traps.
+        const score = (semantic * 0.55) + (retrievalWeight * 0.25) + (overlap * 0.20);
+        return { result, score, overlap, semantic };
+    });
+
+    // Drop low-signal matches when we have enough candidates.
+    const filtered = scored.filter(s => s.score >= 0.12 || s.overlap >= 0.20);
+    const pool = filtered.length >= 3 ? filtered : scored;
+
+    pool.sort((a, b) => b.score - a.score);
+    return pool.map(s => s.result);
+}
 
 /**
  * Compute retrieval weight using logistic function
@@ -325,7 +378,10 @@ export async function retrieve(
         searchResults = await semanticSearch(query, fetchLimit, params);
     }
 
-    // [DIVERSITY FILTER]
+    // Re-rank fused results with query-level relevance scoring.
+    searchResults = rerankByRelevance(query, searchResults, params);
+
+    // [DIVERSITY + DEDUP FILTER]
     // Filter out redundant memories (duplicate content).
     // Vector search can return many near-identical memories ("I posted X", "I just posted X").
     const uniqueResults: MemorySearchResult[] = [];

@@ -25,7 +25,17 @@ const DEFAULT_PARAMS: RetrievalParams = {
 };
 
 // Hard cap on short-term memory items to prevent context explosion
-const MAX_SHORT_TERM_ITEMS = 16; // Cap at 16 items (approx 2k tokens)
+let MAX_SHORT_TERM_ITEMS = 12; // Moderate expansion: better continuity without excessive recency bias
+
+/** Override the STM capacity (used by eval harness) */
+export function setMaxShortTermItems(n: number): void {
+    MAX_SHORT_TERM_ITEMS = n;
+}
+
+/** Reset STM capacity to default */
+export function resetMaxShortTermItems(): void {
+    MAX_SHORT_TERM_ITEMS = 12;
+}
 
 /**
  * Load activated memories into short-term context

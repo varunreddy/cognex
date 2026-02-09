@@ -69,17 +69,18 @@ export function resetMockState(): void {
 
 /**
  * Simulate engagement growth: each time we look at the agent's posts,
- * some of them gain upvotes / replies (mimicking other users interacting).
+ * some of them gain upvotes / replies (mimicking other bots interacting).
+ * Content-blind — engagement is random, as expected in a bot network.
  */
 function tickEngagement(): void {
     for (const post of _agentPosts) {
-        // ~40% chance of gaining 1-3 upvotes per tick
-        if (mulberry32() < 0.4) {
-            post.score += randInt(1, 3);
+        // ~70% chance of gaining 2-5 upvotes per tick
+        if (mulberry32() < 0.7) {
+            post.score += randInt(2, 5);
         }
-        // ~20% chance of gaining a reply
-        if (mulberry32() < 0.2) {
-            post.reply_count += 1;
+        // ~40% chance of gaining 1-2 replies per tick
+        if (mulberry32() < 0.4) {
+            post.reply_count += randInt(1, 2);
         }
     }
 }
@@ -144,7 +145,7 @@ export async function mockExecuteAction(
                 url: p.url,
                 submolt: p.submolt_name,
                 author: _agentName,
-                score: randInt(0, 1),
+                score: randInt(1, 3),
                 reply_count: 0,
                 created_at: new Date().toISOString(),
             };
@@ -159,7 +160,8 @@ export async function mockExecuteAction(
                 post_id: p.post_id,
                 content: p.content,
                 author: _agentName,
-                score: randInt(0, 1),
+                score: randInt(1, 3),
+                reply_count: randInt(0, 1),
                 created_at: new Date().toISOString(),
             };
         }

@@ -1,11 +1,49 @@
 import { Telegraf, Context } from "telegraf";
-// Telegram config stubs (not included in research repo)
-function loadTelegramConfig(): any { return { bot_token: "", authorized_users: [] }; }
-function saveTelegramConfig(_config: any): void {}
-function addAuthorizedUser(_userId: number): void {}
-function isAuthorized(_userId: number): boolean { return false; }
-import { runMoltbookAgent } from "../moltbook/graph";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import * as readline from "readline";
+
+const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const TELEGRAM_CONFIG_PATH = path.join(CONFIG_DIR, "telegram.json");
+
+export interface TelegramConfig {
+    bot_token: string;
+    authorized_users: number[];
+}
+
+export function loadTelegramConfig(): TelegramConfig {
+    if (fs.existsSync(TELEGRAM_CONFIG_PATH)) {
+        try {
+            return JSON.parse(fs.readFileSync(TELEGRAM_CONFIG_PATH, "utf-8"));
+        } catch {
+            return { bot_token: "", authorized_users: [] };
+        }
+    }
+    return { bot_token: "", authorized_users: [] };
+}
+
+export function saveTelegramConfig(config: TelegramConfig): void {
+    if (!fs.existsSync(CONFIG_DIR)) {
+        fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(TELEGRAM_CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+function addAuthorizedUser(userId: number): void {
+    const config = loadTelegramConfig();
+    if (!config.authorized_users.includes(userId)) {
+        config.authorized_users.push(userId);
+        saveTelegramConfig(config);
+    }
+}
+
+function isAuthorized(userId: number): boolean {
+    const config = loadTelegramConfig();
+    return config.authorized_users.includes(userId);
+}
+
+import { runMoltbookAgent } from "../moltbook/graph.js";
 
 // Generate a random 6-digit code
 function generateSecretCode(): string {

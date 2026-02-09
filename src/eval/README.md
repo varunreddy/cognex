@@ -1,158 +1,102 @@
-# Evaluation Harness
+# Evaluation Modes (Simplified)
 
-Controlled ablation experiments for measuring subsystem contributions to agent performance.
+Behavioral evaluation for temporal-agent-control.
 
-## Architecture
+## Evaluation Philosophy
 
+These evaluation modes are behavioral, not goal-oriented. The agent is not optimizing a task objective; evaluation focuses on what actions are chosen and when the agent stops acting. For architectural intent, see [`ARCHITECTURE_INTENT.md`](../../ARCHITECTURE_INTENT.md) at the repository root.
+
+## STM Modes
+
+| Preset | Description | Use Case |
+|--------|-------------|----------|
+| `full` | STM enabled | Long-term autonomous, memory builds across cycles |
+| `no-stm` | STM disabled | Short-term focused, fresh each cycle |
+
+## Profiles
+
+| Profile | Description |
+|---------|-------------|
+| `baseline` | No scope constraints — agent chooses any action |
+| `scoped` | Uses scope selector for focused, goal-directed behavior |
+
+## What is Scope?
+
+**Scope** constrains what the agent can do during an evaluation cycle. Instead of a vague "do something meaningful" prompt, scope provides **concrete, goal-directed tasks**.
+
+### Without Scope (baseline)
 ```
-src/eval/
-  evalConfig.ts      — Feature flag singleton + ablation presets
-  mockActions.ts     — Deterministic mock environment API (seeded PRNG)
-  runner.ts          — Runs N agent cycles, collects per-cycle metrics
-  metrics.ts         — Aggregate statistics (mean, median, entropy, etc.)
-  retrospective.ts   — Historical analysis of existing outcomes.jsonl
-  report.ts          — Paper-ready markdown comparison tables
+Prompt: "[EVAL] Autonomous action cycle — do something meaningful."
+Result: Agent may browse, post, comment, search, or do nothing productive
 ```
 
-## How It Works
+### With Scope (scoped profile)
+```
+Prompt: "[EVAL] Task: Write and publish an original post. Allowed actions: create_post."
+Result: Agent is focused on a specific productive action
+```
 
-The eval system uses a **feature flag singleton** (`evalConfig.ts`) to selectively disable subsystems during agent cycles. Each subsystem has a 1-2 line guard at its entry point that checks `isDisabled(flag)` — a function that returns `true` only when the master switch is on AND the specific flag is set. In normal operation (`enabled: false`), every guard is a no-op.
+### Available Scopes
 
-A **mock API** (`mockActions.ts`) replaces live environment calls with deterministic responses using a seeded PRNG (mulberry32). The mock is stateful: posts the agent creates appear in subsequent `get_feed` calls with simulated engagement growth (upvotes, replies), so the fitness polling loop works correctly.
+| Scope | Task | Expected Actions |
+|-------|------|------------------|
+| `post` | Write and publish an original post | `create_post` |
+| `engage` | Find a post and comment/upvote | `create_comment`, `upvote_post` |
+| `link` | Search and share a link post | `web_search`, `create_link_post` |
+| `explore` | Discover a community and participate | `list_submolts`, `get_feed`, `create_comment` |
+| `mixed` | Do something productive (agent chooses) | Any productive action |
+| `round-robin` | Rotate through all scopes per cycle | Varies |
 
-## Ablation Presets
+### Why Scope Matters
 
-| Preset | What it disables |
-|--------|-----------------|
-| `FULL_SYSTEM` | Nothing (control condition) |
-| `NO_MEMORY` | Temporal memory — retrieval returns empty context |
-| `NO_AROUSAL` | Arousal estimation — `estimateArousal()` returns 0 |
-| `NO_SPREADING` | Spreading activation — graph traversal skipped |
-| `NO_DRIVES` | Drive system — `getDrivePrompt()` returns "" |
-| `NO_HYPOTHESES` | Hypothesis learning — `processOutcome()` returns early |
-| `NO_STAGNATION` | Stagnation detection — no early exit, no warnings |
-| `NO_EVOLUTION` | Strategies + policy mutation |
-| `BASELINE` | Everything — bare LLM + action loop |
+- **Without scope**: Agent often browses without creating content
+- **With scope**: Agent completes concrete tasks, enabling behavioral comparison
+- **Key insight**: Behavioral metrics (what agent does) matter more than action metrics (how many steps)
+
+## Recommended Combinations
+
+| Mode | STM | Profile | Use Case |
+|------|-----|---------|----------|
+| Long-term autonomous | `full` | `baseline` | Memory builds up, agent explores freely |
+| Short-term focused | `no-stm` | `scoped` | Fresh context, directed tasks |
 
 ## CLI Commands
 
 ```bash
-# List all presets with descriptions
+# List presets
 npm run dev -- eval presets
 
-# Run 10 mock cycles with full system (control)
-npm run dev -- eval run --mock --preset FULL_SYSTEM --cycles 10
+# Long-term autonomous (STM + no scope)
+npm run dev -- eval run --preset full --cycles 5 --mock --profile baseline
 
-# Run 10 mock cycles with memory ablated
-npm run dev -- eval run --mock --preset NO_MEMORY --cycles 10
+# Short-term focused (no-STM + scoped)
+npm run dev -- eval run --preset no-stm --cycles 5 --mock --profile scoped
 
-# Run 10 mock cycles with bare LLM baseline
-npm run dev -- eval run --mock --preset BASELINE --cycles 10
+# Specific scope
+npm run dev -- eval run --preset no-stm --profile scoped --scope post
 
-# Compare all results side-by-side
-npm run dev -- eval compare
-
-# Historical analysis of outcomes.jsonl
-npm run dev -- eval retro
-
-# Full help
-npm run dev -- eval help
+# Round-robin through all scopes
+npm run dev -- eval run --preset full --profile scoped --scope round-robin
 ```
 
-### `eval run` Options
+## Options
 
 | Flag | Description | Default |
-|------|------------|---------|
-| `--preset <name>` | Ablation preset to use | `FULL_SYSTEM` |
-| `--cycles <N>` | Number of agent cycles to run | `3` |
-| `--mock` | Use deterministic mock API | off (live API) |
-| `--seed <N>` | RNG seed for mock API | `42` |
+|------|-------------|---------|
+| `--preset full\|no-stm` | STM mode | `full` |
+| `--cycles N` | Number of cycles | `3` |
+| `--mock` | Use mock API | off |
+| `--mode independent\|cumulative` | Reset behavior | `independent` |
+| `--profile baseline\|scoped` | Scope constraints | `baseline` |
+| `--scope <name>` | Specific scope (when scoped) | `round-robin` |
+| `--max-steps N` | Max steps per cycle | `10` |
 
-### `eval compare` Options
+## Files
 
-| Flag | Description | Default |
-|------|------------|---------|
-| `--dir <path>` | Directory containing result JSONs | `./eval_results/` |
-
-## Output Format
-
-Results are written to `eval_results/` as JSON files named `<label>_<timestamp>.json`.
-
-### Per-Cycle Metrics
-
-Each cycle records:
-- **actions**: List of `{ type, fitness_delta, status }`
-- **total_fitness_delta**: Sum of all fitness deltas in the cycle
-- **action_diversity**: Count of unique action types used
-- **stagnant_actions**: Count of zero-delta actions
-- **steps_used**: Total actions taken
-- **exit_reason**: `"max_steps"`, `"stagnation"`, `"no_action"`, or `"error"`
-
-### Aggregate Metrics
-
-Computed across all cycles in a run:
-- **mean/median/std fitness delta**
-- **action_entropy**: Shannon entropy of action type distribution (higher = more diverse behavior)
-- **stagnation_rate**: Fraction of actions with zero fitness delta
-- **productive_action_rate**: Fraction of create_post/comment/upvote actions
-- **early_exit_rate**: Fraction of cycles that hit stagnation exit
-
-### Comparison Report
-
-`eval compare` generates a markdown report with:
-1. Side-by-side ablation comparison table
-2. Action distribution breakdown per condition
-3. Per-cycle fitness CSV data (for external plotting)
-
-## Subsystem Guard Points
-
-Each subsystem has a minimal guard that checks the eval config:
-
-| Subsystem | File | Function | When disabled |
-|-----------|------|----------|--------------|
-| Temporal memory | `temporal/index.ts` | `getMemoryContext()` | Returns `"No memories available."` |
-| Temporal memory | `temporal/index.ts` | `retrieveAndLoadContext()` | Returns `[]` |
-| Short-term context | `temporal/index.ts` | `retrieveAndLoadContext()` | Skips STM loading; formats memories directly |
-| Arousal | `temporal/arousal.ts` | `estimateArousal()` | Returns `0` |
-| Spreading activation | `temporal/retrieval.ts` | `retrieve()` | Sets `useSpreadingActivation: false` |
-| Consolidation | `temporal/consolidation.ts` | `consolidateMemories()` | Returns empty result |
-| Reflection | `temporal/reflection.ts` | `performReflection()` | Returns empty result |
-| Drives | `core/drives.ts` | `getDrivePrompt()` | Returns `""` |
-| Hypotheses | `temporal/hypotheses.ts` | `processOutcome()` | Returns early |
-| Strategies | `core/strategies.ts` | `getActiveStrategy()` | Returns conservative strategy |
-| Policy mutation | `core/policyMutation.ts` | `evolvePolicy()` | Returns current policy unchanged |
-| Stagnation | `adapters/moltbook/nodes.ts` | Planner stagnation warning | Skips warning |
-| Stagnation | `adapters/moltbook/graph.ts` | `routeAfterExecutor()` | Skips early exit |
-
-## Mock API Details
-
-The mock API (`mockActions.ts`) is stateful:
-
-1. **Post tracking**: `create_post` / `create_link_post` store the post with the agent's name
-2. **Engagement simulation**: Each `get_feed` call ticks engagement — 40% chance of +1-3 upvotes, 20% chance of +1 reply per post
-3. **Feed composition**: Returns 3-4 random posts from other users + up to 2 of the agent's own recent posts
-4. **Fitness polling**: Posts include both `score`/`reply_count` and `upvotes`/`comment_count` fields so the executor's polling scanner picks them up
-5. **Determinism**: All randomness uses mulberry32 seeded PRNG — same seed = same results
-6. **Cycle isolation**: `resetMockState()` clears posts between cycles
-
-## Adding a New Ablation
-
-1. Add a `disable<Subsystem>: boolean` field to `EvalConfig` in `evalConfig.ts`
-2. Add it to `DEFAULT_CONFIG` (set to `false`)
-3. Create a preset: `export const NO_FOO = preset("no-foo", { disableFoo: true })`
-4. Register in `getPreset()` lookup table
-5. Add the guard in the subsystem's entry point:
-   ```typescript
-   import { isDisabled } from '../../../eval/evalConfig.js';
-   if (isDisabled('disableFoo')) return <default>;
-   ```
-
-## Retrospective Analysis
-
-`eval retro` parses `~/.config/temporal-agent/outcomes.jsonl` (historical action outcomes) and computes:
-
-- **Action distribution** — overall and per 50-action window
-- **Fitness trajectory** — cumulative upvotes/replies over time
-- **Strategy comparison** — mean upvotes/replies/moderation per strategy
-- **Stagnation runs** — consecutive zero-outcome actions (count, max, mean)
-- **Topic diversity** — unique topics per window
+```
+src/eval/
+  evalConfig.ts  — STM mode configuration (full, no-stm)
+  runner.ts      — Cycle runner with scope/profile support
+  taskScopes.ts  — Task scope definitions (post, engage, link, etc.)
+  mockActions.ts — Deterministic mock environment API
+```

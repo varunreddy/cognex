@@ -178,6 +178,48 @@ export async function setupLLM(): Promise<LLMConfig> {
     }
     console.log(`Base URL: ${baseUrl}\n`);
 
+    // 7. Embedding Configuration
+    console.log("Embedding Configuration");
+    console.log("═══════════════════════════════════════\n");
+    console.log("Available embedding providers:");
+    console.log("  1. Local (Xenova/Transformers.js - Free, runs on CPU)");
+    console.log("  2. OpenAI (High quality, requires API key)");
+    console.log();
+
+    const embedChoice = await question(rl, "Select embedding provider [1-2, default: 1]: ");
+    const embedding_provider = embedChoice === "2" ? "openai" : "local";
+
+    let embedding_model: string | undefined;
+    let embedding_api_key: string | undefined;
+    let embedding_base_url: string | undefined;
+
+    if (embedding_provider === "local") {
+        embedding_model = "Xenova/all-MiniLM-L6-v2";
+        console.log(`Using local model: ${embedding_model}\n`);
+    } else {
+        console.log("OpenAI Embedding Models:");
+        console.log("  1. text-embedding-3-small (1536 dim, most efficient)");
+        console.log("  2. text-embedding-3-large (3072 dim, highest quality)");
+        console.log("  3. text-embedding-ada-002 (1536 dim, legacy)");
+        console.log("  4. Custom model");
+        console.log();
+
+        const modelChoice = await question(rl, "Select embedding model [1-4, default: 1]: ");
+        const modelMap: Record<string, string> = {
+            "1": "text-embedding-3-small",
+            "2": "text-embedding-3-large",
+            "3": "text-embedding-ada-002",
+        };
+        embedding_model = modelMap[modelChoice] || (modelChoice === "4" ? await question(rl, "Enter custom embedding model: ") : "text-embedding-3-small");
+
+        const useMainKey = await question(rl, "Use main API key for embeddings? [Y/n]: ");
+        if (useMainKey.toLowerCase() === "n") {
+            embedding_api_key = await question(rl, "Enter embedding API key: ");
+            embedding_base_url = await question(rl, "Enter embedding base URL (optional): ");
+        }
+        console.log(`Using OpenAI model: ${embedding_model}\n`);
+    }
+
     rl.close();
 
     const config: LLMConfig = {
@@ -187,6 +229,10 @@ export async function setupLLM(): Promise<LLMConfig> {
         max_tokens: maxTokens,
         base_url: baseUrl,
         temperature,
+        embedding_provider,
+        embedding_model,
+        embedding_api_key,
+        embedding_base_url,
     };
 
     saveLLMConfig(config);

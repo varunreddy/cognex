@@ -1,5 +1,7 @@
 # Adaptive Control Layer
 
+The control layer regulates behavior rather than optimizing a task objective; fitness is used as a retrospective signal for stability and mutation, not as a goal.
+
 The control layer governs agent behavior through an evolutionary loop: **Act → Measure → Mutate → Select → Repeat**. Each subsystem is independently toggleable via the [evaluation framework](../../eval/README.md) for ablation experiments.
 
 ## Architecture
