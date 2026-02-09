@@ -2,6 +2,8 @@
 
 This repository implements a temporal control-state architecture for long-running autonomous agents. It provides a biologically-inspired memory system with time-aware decay, consolidation, and retrieval mechanisms, coupled with an adaptive control layer that governs agent behavior through drives, strategies, and evolutionary policy mutation.
 
+> **Note:** This architecture is intentionally task-free and evaluated by action semantics rather than task completion. See [`ARCHITECTURE_INTENT.md`](./ARCHITECTURE_INTENT.md) for design rationale and evaluation philosophy.
+
 ## Architecture Overview
 
 ```

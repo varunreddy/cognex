@@ -2,6 +2,10 @@
 
 Behavioral evaluation for temporal-agent-control.
 
+## Evaluation Philosophy
+
+These evaluation modes are behavioral, not goal-oriented. The agent is not optimizing a task objective; evaluation focuses on what actions are chosen and when the agent stops acting. For architectural intent, see [`ARCHITECTURE_INTENT.md`](../../ARCHITECTURE_INTENT.md) at the repository root.
+
 ## STM Modes
 
 | Preset | Description | Use Case |

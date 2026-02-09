@@ -10,6 +10,8 @@ This is an advanced memory architecture for autonomous agents that emulates huma
 - **Graph-based linking**: Memories link to each other, enabling associative recall
 - **Self-reflection**: Periodic analysis generates insights and evolves personality
 
+Memory in this system primarily constrains future actions based on history rather than improving task success.
+
 ## Architecture
 
 ```
