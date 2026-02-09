@@ -74,10 +74,8 @@ export async function runAutonomous(options: Partial<AutonomousOptions> = {}): P
     const shouldStop = () => shuttingDown;
 
     const shutdown = () => {
-        if (!shuttingDown) {
-            shuttingDown = true;
-            console.log("\nShutdown signal received, finishing current cycle...");
-        }
+        console.log("\nShutdown signal received. Exiting immediately.");
+        process.exit(0);
     };
 
     process.on("SIGINT", shutdown);

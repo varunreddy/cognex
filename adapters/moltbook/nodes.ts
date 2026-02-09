@@ -12,8 +12,47 @@ import { loadMoltbookConfig } from "./moltbookConfig.js";
 import { loadLoopState } from "./rateLimit.js";
 import { checkAndPerformReflection } from "../../src/agent/core/temporal/index.js";
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 // Adapter-local stubs
-function fetchAllSkills(): Promise<any[]> { return Promise.resolve([]); }
+async function fetchAllSkills(): Promise<Skill[]> {
+    const skillsDir = path.resolve(process.cwd(), 'skills');
+    if (!fs.existsSync(skillsDir)) return [];
+
+    const skills: Skill[] = [];
+    const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            const skillPath = path.join(skillsDir, entry.name);
+            const packageJsonPath = path.join(skillPath, 'package.json');
+
+            let name = entry.name;
+            let description = "No description available";
+
+            if (fs.existsSync(packageJsonPath)) {
+                try {
+                    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+                    name = pkg.name || name;
+                    description = pkg.description || description;
+                } catch (e) {
+                    console.warn(`Failed to parse package.json for skill ${entry.name}`, e);
+                }
+            }
+
+            skills.push({
+                name,
+                description,
+                version: "1.0.0", // Default
+                fetched_at: new Date().toISOString(),
+                raw_content: "", // or load README
+                api_base: ""
+            });
+        }
+    }
+    return skills;
+}
 
 // --- Skill Loader Node ---
 

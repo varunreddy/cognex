@@ -195,7 +195,7 @@ export function createExecutorNode<TState extends BaseAgentState>(
             console.log(`[EXECUTOR] Fitness: ${fitnessResult.overall_fitness.toFixed(1)} (Δ${fitnessEarned >= 0 ? "+" : ""}${fitnessEarned.toFixed(2)})`);
 
             // Auto-save significant interactions to temporal memory
-            if (["create_post", "create_comment", "reply_comment"].includes(action.type)) {
+            if (result && ["create_post", "create_comment", "reply_comment"].includes(action.type)) {
                 try {
                     const memoryContent = action.type === "create_post"
                         ? `Posted "${action.parameters.title}" in m/${action.parameters.submolt_name}`

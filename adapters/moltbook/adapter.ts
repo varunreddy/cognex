@@ -16,13 +16,163 @@ import { AgentState, MoltbookAction, MoltbookActionType, Skill, MoltbookCredenti
 import * as actions from "./actions";
 import { saveMemory, recordInteraction as recordMemoryInteraction, retrieveAndLoadContext } from "../../src/agent/core/temporal";
 import { recordInteraction, addEvolutionNote, evolvePersonaFromFitness } from "../../src/agent/core/persona";
-import { checkRateLimit, recordAction, getEngagedIds, recordEngagement } from "./rateLimit.js";
+import { checkRateLimit, recordAction, getEngagedIds, recordEngagement, setSuspension } from "./rateLimit.js";
 
 // Search skill (wired to real implementation)
 import {
     executeSearchSkill,
     getSearchSkillDescription
 } from "../search/searchSkill.js";
+
+/**
+ * Execute action internally by mapping to specific handler
+ */
+async function executeActionInternal(
+    action: BaseAction,
+    state: AgentState,
+    adapter: AgentAdapter<AgentState>
+): Promise<any> {
+    const { type, parameters } = action;
+
+    switch (type) {
+        // --- Core Interactions ---
+        case "reply_to_user":
+            return {
+                success: true,
+                message: "Replied to user",
+                content: parameters.content
+            };
+
+        case "internal_monologue":
+            return {
+                success: true,
+                message: "Internal monologue recorded",
+                thoughts: parameters.thoughts
+            };
+
+        case "check_loop":
+            return { success: true, status: "alive", timestamp: Date.now() };
+
+        // --- Moltbook API Actions ---
+
+        case "check_claim_status":
+            return await actions.checkClaimStatus();
+
+        case "get_profile":
+            return await actions.getProfile(parameters.handle);
+
+        case "update_profile":
+            return await actions.updateProfile(parameters);
+
+        case "get_feed":
+            return await actions.getFeed(parameters);
+
+        case "create_post":
+            return await actions.createPost(
+                parameters.submolt_name,
+                parameters.title,
+                parameters.content
+            );
+
+        case "create_link_post":
+            return await actions.createLinkPost(
+                parameters.submolt_name,
+                parameters.title,
+                parameters.url
+            );
+
+        case "create_comment":
+            return await actions.createComment(
+                parameters.post_id,
+                parameters.content
+            );
+
+        case "reply_comment":
+            return await actions.replyToComment(
+                parameters.post_id,
+                parameters.parent_id,
+                parameters.content
+            );
+
+        case "upvote_post":
+            return await actions.upvotePost(parameters.post_id);
+
+        case "downvote_post":
+            return await actions.downvotePost(parameters.post_id);
+
+        case "upvote_comment":
+            return await actions.upvoteComment(parameters.comment_id);
+
+        case "get_post":
+            return await actions.getPost(parameters.post_id);
+
+        case "get_comments":
+            return await actions.getComments(parameters.post_id);
+
+        case "delete_post":
+            return await actions.deletePost(parameters.post_id);
+
+        case "subscribe":
+            return await actions.subscribe(parameters.submolt_name);
+
+        case "unsubscribe":
+            return await actions.unsubscribe(parameters.submolt_name);
+
+        case "get_submolt":
+            return await actions.getSubmolt(parameters.submolt_name);
+
+        case "list_submolts":
+            return await actions.listSubmolts();
+
+        case "follow":
+            return await actions.follow(parameters.handle);
+
+        case "unfollow":
+            return await actions.unfollow(parameters.handle);
+
+        case "search":
+            return await actions.search(parameters.query, parameters);
+
+        // --- Skills & Tools ---
+
+        case "web_search":
+            return await executeSearchSkill({ query: parameters.query });
+
+        case "save_memory":
+            try {
+                await saveMemory({
+                    content: parameters.content,
+                    type: 'episodic',
+                    importance: 0.5,
+                    tags: ['manual_save'],
+                    source: 'autonomous_exploration'
+                });
+                return { success: true, message: "Memory saved" };
+            } catch (e: any) {
+                return { success: false, error: e.message };
+            }
+
+        case "run_skill_command":
+            if (!parameters.command) {
+                throw new Error("Command is required for run_skill_command");
+            }
+            // Execute shell command
+            // Note: execAsync is imported at the top of the file
+            const { stdout, stderr } = await execAsync(parameters.command);
+            return {
+                success: true,
+                stdout: stdout,
+                stderr: stderr
+            };
+
+        case "install_skill":
+        case "inspect_skill":
+            return { success: false, message: "Skill management actions not fully implemented in adapter shim." };
+
+        default:
+            throw new Error(`Unknown action type: ${type}`);
+    }
+}
 
 /**
  * Moltbook Adapter implements AgentAdapter for Moltbook social platform.
@@ -179,135 +329,25 @@ export const moltbookAdapter: AgentAdapter<AgentState> = {
     },
 
     async executeAction(action: BaseAction, state: AgentState): Promise<any> {
-        const { type, parameters: p } = action;
-        const skills = state.skills || [];
+        try {
+            return await executeActionInternal(action, state, this);
+        } catch (error: any) {
+            const msg = error.message?.toLowerCase() || "";
+            if (msg.includes("suspended")) {
+                console.warn(`[MOLTBOOK] Detected suspension: ${error.message}`);
 
-        // Dynamic skill transformation
-        const installedSkill = skills.find(s => s.name === type);
-        if (installedSkill) {
-            // Transform to run_skill_command
-            const args = Object.entries(p).map(([k, v]) => `--${k} "${v}"`).join(" ");
-            const constructedCommand = `${type} ${args}`;
-            return this.executeAction({
-                type: "run_skill_command",
-                parameters: { skill_name: type, command: constructedCommand },
-                status: action.status
-            }, state);
-        }
-
-        switch (type) {
-            case "check_claim_status":
-                return await actions.checkClaimStatus();
-            case "get_feed":
-                return await actions.getFeed(p);
-            case "create_post":
-                return await actions.createPost(p.submolt_name, p.title, p.content);
-            case "create_link_post":
-                return await actions.createLinkPost(p.submolt_name, p.title, p.url);
-            case "get_post":
-                return await actions.getPost(p.post_id);
-            case "delete_post":
-                return await actions.deletePost(p.post_id);
-            case "create_comment":
-                return await actions.createComment(p.post_id, p.content);
-            case "reply_comment":
-                return await actions.replyToComment(p.post_id, p.parent_id, p.content);
-            case "get_comments":
-                return await actions.getComments(p.post_id);
-            case "upvote_post":
-                return await actions.upvotePost(p.post_id);
-            case "downvote_post":
-                return await actions.downvotePost(p.post_id);
-            case "upvote_comment":
-                return await actions.upvoteComment(p.comment_id);
-            case "subscribe":
-                return await actions.subscribe(p.submolt_name);
-            case "unsubscribe":
-                return await actions.unsubscribe(p.submolt_name);
-            case "get_submolt":
-                return await actions.getSubmolt(p.submolt_name);
-            case "list_submolts":
-                return await actions.listSubmolts();
-            case "reply_to_user":
-                console.log(`\n💬 [CHAT RESPONSE]: ${p.content}\n`);
-                return { message: p.content };
-            case "internal_monologue":
-                console.log(`\n💭 [THINKING]: ${p.thoughts}\n`);
-                return { thoughts: p.thoughts };
-            case "follow":
-                return await actions.follow(p.handle);
-            case "unfollow":
-                return await actions.unfollow(p.handle);
-            case "get_profile":
-                return await actions.getProfile(p.handle);
-            case "update_profile":
-                return await actions.updateProfile(p);
-            case "search":
-                return await actions.search(p.query, p);
-            case "web_search":
-                return await executeSearchSkill({
-                    query: p.query,
-                    reason: p.reason,
-                    depth: p.depth || "quick",
-                });
-            case "check_loop":
-                return await actions.getPersonalizedFeed({ sort: "new", limit: 10 });
-            case "install_skill":
-                console.log(`[EXECUTOR] Installing skill: ${p.skill_name} from ${p.repo_url}`);
-                try {
-                    const { stdout, stderr } = await execAsync(`npm run skill:add -- ${p.repo_url} --skill ${p.skill_name}`);
-                    return { success: true, stdout, stderr };
-                } catch (e: any) {
-                    throw new Error(`Failed to install skill: ${e.message}`);
-                }
-            case "inspect_skill":
-                console.log(`[EXECUTOR] Inspecting skill: ${p.skill_name}`);
-                const skill = skills.find(s => s.name === p.skill_name);
-                if (!skill) {
-                    return { success: false, error: `Skill '${p.skill_name}' not found.` };
-                }
-                return {
-                    success: true,
-                    name: skill.name,
-                    description: skill.description,
-                    manual: skill.raw_content
-                };
-            case "run_skill_command":
-                console.log(`[EXECUTOR] Running skill command: ${p.command}`);
-                const safePrefix = p.skill_name;
-                let finalCommand = p.command.trim();
-
-                if (!finalCommand.startsWith(safePrefix)) {
-                    finalCommand = `${safePrefix} ${finalCommand}`;
+                // Parse duration "ends in X hours"
+                let hours = 24;
+                const match = msg.match(/ends in (\d+) hours/);
+                if (match) {
+                    hours = parseInt(match[1], 10);
                 }
 
-                try {
-                    const { stdout, stderr } = await execAsync(finalCommand, { cwd: process.cwd() });
-                    await saveMemory({
-                        content: `To use capability '${p.skill_name}', execute: ${finalCommand}`,
-                        type: 'procedural',
-                        importance: 0.8,
-                        tags: ['skill_usage', p.skill_name],
-                        source: 'autonomous_exploration'
-                    });
-                    return { success: true, output: stdout || stderr };
-                } catch (e: any) {
-                    return { success: false, error: e.message, output: e.stdout || e.stderr };
-                }
-            case "save_memory":
-                const memoryType = p.category === 'reflection' ? 'semantic' : 'episodic';
-                await saveMemory({
-                    content: p.content,
-                    type: memoryType as 'episodic' | 'semantic',
-                    importance: p.emotion ? 0.7 : 0.5,
-                    tags: [p.category, p.emotion].filter(Boolean),
-                    source: 'user_interaction',
-                    emotion: p.emotion,
-                });
-                recordMemoryInteraction();
-                return { saved: true, category: p.category, content: p.content };
-            default:
-                throw new Error(`Unknown action type: ${type}`);
+                // Add some buffer (e.g. 10 mins)
+                const until = Date.now() + (hours * 60 * 60 * 1000) + (10 * 60 * 1000);
+                setSuspension(until);
+            }
+            throw error;
         }
     },
 

@@ -8,6 +8,7 @@
     "dev": "tsx src/cli.ts",
     "eval": "tsx src/cli.ts",
     "report": "tsx src/cli.ts report",
+    "skill:add": "tsx src/scripts/add-skill.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
