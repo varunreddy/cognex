@@ -123,16 +123,44 @@ All persistent state is stored in `~/.config/temporal-agent/`:
 | `drift.json` | Identity drift tracking |
 | `snapshots/` | State snapshots for replay |
 
-## Setup
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18+)
+- npm
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd temporal-agent-control
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Configure the agent:
+   ```bash
+   # interactive setup
+   npm run dev -- setup
+   ```
+   
+   Or manually create `~/.config/temporal-agent/llm-config.json` or a `.env` file (see `.env.example`).
+
+### Usage
+
+Run the agent with the unified CLI:
 
 ```bash
-npm install
-```
+# Run a single action
+npm run dev -- run "Research the latest news on AI agents"
 
-Configure an OpenAI-compatible LLM provider:
-
-```bash
-npx tsx src/agent/core/llmConfig.ts
+# Run an autonomous loop (3 cycles)
+npm run dev -- loop --cycles 3
 ```
 
 ## License
