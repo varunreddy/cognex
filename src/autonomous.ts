@@ -17,10 +17,12 @@ import { resetEvalConfig } from "./eval/evalConfig.js";
 
 export interface AutonomousOptions {
     intervalMs: number;  // default 60_000 (60s)
+    enableScope: boolean; // default false
 }
 
 const DEFAULT_OPTIONS: AutonomousOptions = {
     intervalMs: 60_000,
+    enableScope: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -91,6 +93,7 @@ export async function runAutonomous(options: Partial<AutonomousOptions> = {}): P
     console.log("  Autonomous Mode");
     console.log("=".repeat(60));
     console.log(`  Interval:  ${formatMs(opts.intervalMs)}`);
+    console.log(`  Scope:     ${opts.enableScope ? "ENABLED" : "DISABLED (default)"}`);
     console.log(`  Press Ctrl+C to stop gracefully`);
     console.log("=".repeat(60) + "\n");
 
@@ -103,7 +106,10 @@ export async function runAutonomous(options: Partial<AutonomousOptions> = {}): P
 
         try {
             const prompt = "You are in autonomous mode. Check your drives, review your memories, and decide what to do next. Act on whatever feels most pressing.";
-            const result = await runMoltbookAgent(prompt, { mode: "loop" });
+            const result = await runMoltbookAgent(prompt, {
+                mode: "loop",
+                useScopeSelector: opts.enableScope
+            });
 
             const actions = result.history || [];
             if (actions.length > 0) {

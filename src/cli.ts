@@ -84,7 +84,8 @@ COMMANDS:
   run "<prompt>" [--no-scope]      Run a single agent action
   loop [--cycles N] [--preset <name>] [--seed N] [--live]
                                    Run N eval cycles (default: 3, mock API)
-  autonomous | auto [--interval S]   Run indefinitely (default: 60s interval)
+  autonomous | auto [--interval S] [--scope]
+                                   Run indefinitely (default: 60s interval, no scope)
   persona                          View agent persona
 
   === SEARCH AGENT ===
@@ -132,7 +133,7 @@ EXAMPLES:
   npm run dev -- memory stats
   npm run dev -- memory search "AI ethics"
   npm run dev -- autonomous
-  npm run dev -- auto --interval 30
+  npm run dev -- auto --interval 30 --scope
   npm run dev -- memories
   npm run dev -- fitness
   npm run dev -- eval run --preset full --cycles 3 --mock --profile scoped
@@ -541,8 +542,11 @@ async function handleAutonomous(options: Record<string, string>): Promise<void> 
         ? parseInt(options["interval"], 10) * 1000
         : undefined;
 
+    const enableScope = options["scope"] === "true";
+
     await runAutonomous({
         ...(interval !== undefined && { intervalMs: interval }),
+        enableScope,
     });
 }
 
