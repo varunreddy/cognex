@@ -96,6 +96,12 @@ export function saveFitness(fitness: FitnessScores): void {
     fs.writeFileSync(FITNESS_FILE, JSON.stringify(fitness, null, 2));
 }
 
+/** Reset fitness to defaults (used between eval cycles for independent measurements) */
+export function resetFitness(): void {
+    const fresh = getDefaultFitness();
+    saveFitness(fresh);
+}
+
 /**
  * Update fitness based on an outcome
  */
@@ -197,15 +203,16 @@ function recalculateScores(fitness: FitnessScores): void {
     }
 
     // Engagement score (0-100)
-    const upvoteScore = Math.min(fitness.total_upvotes / 100, 1) * 30;
-    const replyScore = Math.min(fitness.reply_rate / 5, 1) * 40;
-    const depthScore = Math.min(fitness.avg_thread_depth / 10, 1) * 30;
+    // Thresholds calibrated for short eval cycles (10-20 steps)
+    const upvoteScore = Math.min(fitness.total_upvotes / 10, 1) * 30;
+    const replyScore = Math.min(fitness.reply_rate / 2, 1) * 40;
+    const depthScore = Math.min(fitness.avg_thread_depth / 3, 1) * 30;
     fitness.engagement_score = upvoteScore + replyScore + depthScore;
 
     // Diversity score (0-100)
-    const topicScore = Math.min(fitness.unique_topics.length / 10, 1) * 40;
+    const topicScore = Math.min(fitness.unique_topics.length / 5, 1) * 40;
     const channelScore = Math.min(fitness.unique_channels.length / 5, 1) * 30;
-    const agentScore = Math.min(fitness.unique_agents_interacted.length / 20, 1) * 30;
+    const agentScore = Math.min(fitness.unique_agents_interacted.length / 5, 1) * 30;
     fitness.diversity_score = topicScore + channelScore + agentScore;
 
     // Overall fitness (weighted combination)

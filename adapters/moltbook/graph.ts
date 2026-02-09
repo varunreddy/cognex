@@ -17,6 +17,7 @@ import {
 import { isDisabled } from "../../src/eval/evalConfig.js";
 import {
     skillLoaderNode,
+    scopeSelectorNode,
     plannerNode,
     deciderNode,
     rateLimiterNode,
@@ -38,6 +39,10 @@ const GraphState = Annotation.Root({
     mode: Annotation<"single" | "loop" | "chat">({
         reducer: (x: "single" | "loop" | "chat", y: "single" | "loop" | "chat") => (y === undefined ? x : y),
         default: () => "single" as const,
+    }),
+    cycle_time: Annotation<number>({
+        reducer: (x: number, y: number) => (y === undefined ? x : y),
+        default: () => Date.now(),
     }),
     skills: Annotation<Skill[]>({
         reducer: (x: Skill[], y: Skill[]) => (y === undefined ? x : y),
@@ -77,11 +82,23 @@ const GraphState = Annotation.Root({
     }),
     max_steps: Annotation<number>({
         reducer: (x: number, y: number) => (y === undefined ? x : y),
-        default: () => 10,
+        default: () => 20,
     }),
     search_exhausted: Annotation<boolean>({
         reducer: (x: boolean, y: boolean) => (y === undefined ? x : y),
         default: () => false,
+    }),
+    current_scope: Annotation<AgentState["current_scope"]>({
+        reducer: (x: AgentState["current_scope"], y: AgentState["current_scope"]) => (y === undefined ? x : y),
+        default: () => undefined,
+    }),
+    allowed_actions: Annotation<AgentState["allowed_actions"]>({
+        reducer: (x: AgentState["allowed_actions"], y: AgentState["allowed_actions"]) => (y === undefined ? x : y),
+        default: () => undefined,
+    }),
+    use_scope_selector: Annotation<boolean>({
+        reducer: (x: boolean, y: boolean) => (y === undefined ? x : y),
+        default: () => true,
     }),
 });
 
@@ -95,7 +112,8 @@ function routeAfterDecider(state: typeof GraphState.State) {
     }
 
     if (action.status === "failed") {
-        return "finalizer";
+        // Route failed actions to executor so they are archived and step_count advances.
+        return "executor";
     }
 
     if (action.status === "approved") {
@@ -120,6 +138,15 @@ function routeAfterRateLimiter(state: typeof GraphState.State) {
 }
 
 function routeAfterExecutor(state: typeof GraphState.State) {
+    // Chat turns should end after replying once.
+    // Prevents repeated reply_to_user loops on the same incoming message.
+    if (state.mode === "chat") {
+        const last = state.completed_actions[state.completed_actions.length - 1];
+        if (last?.type === "reply_to_user" && last.status === "executed") {
+            return "finalizer";
+        }
+    }
+
     // Check for stagnation: consecutive zero-delta actions (non-chat only)
     if (state.mode !== "chat" && !isDisabled('disableStagnationDetection')) {
         const actions = state.completed_actions;
@@ -131,7 +158,7 @@ function routeAfterExecutor(state: typeof GraphState.State) {
                 break;
             }
         }
-        if (consecutiveZeroDelta >= 5) {
+        if (consecutiveZeroDelta >= 8) {
             console.log(`[GRAPH] Stagnation exit: ${consecutiveZeroDelta} consecutive zero-delta actions.`);
             return "finalizer";
         }
@@ -147,11 +174,24 @@ function routeAfterExecutor(state: typeof GraphState.State) {
     return "planner";
 }
 
+function routeAfterScopeSelector(state: typeof GraphState.State) {
+    if (state.current_scope?.exit) {
+        console.log(`[GRAPH] Scope requested exit: ${state.current_scope.objective}`);
+        return "finalizer";
+    }
+    return "planner";
+}
+
+function routeAfterSkillLoader(state: typeof GraphState.State) {
+    return state.use_scope_selector ? "scope_selector" : "planner";
+}
+
 // --- Build Graph ---
 
 export function buildMoltbookGraph() {
     const workflow = new StateGraph(GraphState)
         .addNode("skill_loader", skillLoaderNode)
+        .addNode("scope_selector", scopeSelectorNode)
         .addNode("planner", plannerNode)
         .addNode("decider", deciderNode)
         .addNode("rate_limiter", rateLimiterNode)
@@ -159,14 +199,23 @@ export function buildMoltbookGraph() {
         .addNode("finalizer", finalizerNode)
         .setEntryPoint("skill_loader");
 
-    // Flow: skill_loader -> planner -> decider -> rate_limiter -> executor -> finalizer
-    workflow.addEdge("skill_loader", "planner");
+    // Flow: skill_loader -> scope_selector -> planner -> decider -> rate_limiter -> executor -> finalizer
+    workflow.addConditionalEdges(
+        "skill_loader",
+        routeAfterSkillLoader,
+        { scope_selector: "scope_selector", planner: "planner" }
+    );
+    workflow.addConditionalEdges(
+        "scope_selector",
+        routeAfterScopeSelector,
+        { planner: "planner", finalizer: "finalizer" }
+    );
     workflow.addEdge("planner", "decider");
 
     workflow.addConditionalEdges(
         "decider",
         routeAfterDecider,
-        { rate_limiter: "rate_limiter", finalizer: "finalizer" }
+        { rate_limiter: "rate_limiter", executor: "executor", finalizer: "finalizer" }
     );
 
     workflow.addConditionalEdges(
@@ -195,22 +244,36 @@ export async function runMoltbookAgent(
     options: {
         mode?: "single" | "loop" | "chat";
         previousHistory?: MoltbookAction[];
+        maxSteps?: number;
+        useScopeSelector?: boolean;
     } = {}
-): Promise<{ summary: MoltbookSummary | null; history: MoltbookAction[] }> {
+): Promise<{
+    summary: MoltbookSummary | null;
+    history: MoltbookAction[];
+    execution_log: string[];
+    current_scope?: AgentState["current_scope"];
+}> {
     const graph = buildMoltbookGraph();
+    const maxSteps = options.maxSteps ?? 20;
 
     const result = await graph.invoke({
         messages: [new HumanMessage(userRequest)],
         user_request: userRequest,
         mode: options.mode || "single",
+        cycle_time: Date.now(),
         execution_log: [],
         completed_actions: options.previousHistory || [],
         step_count: 0,
-        max_steps: 10,
-    }, { recursionLimit: 100 });
+        max_steps: maxSteps,
+        current_scope: undefined,
+        allowed_actions: undefined,
+        use_scope_selector: options.useScopeSelector ?? true,
+    }, { recursionLimit: 200 });
 
     return {
         summary: result.summary,
-        history: result.completed_actions
+        history: result.completed_actions,
+        execution_log: result.execution_log || [],
+        current_scope: result.current_scope,
     };
 }

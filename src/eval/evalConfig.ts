@@ -1,15 +1,20 @@
 /**
- * Evaluation Configuration — Feature flags for ablation experiments.
- *
- * Singleton pattern: import { getEvalConfig } from "./evalConfig"
- * In production the master switch (enabled) is false so every guard is a no-op.
+ * Eval config - controls which features are on/off during evaluation runs.
+ * 
+ * simplified this down to just two presets since behavioral evaluation
+ * showed that STM on/off is what really matters:
+ *   - full: everything on, memory persists across actions
+ *   - no-stm: short-term memory off, each cycle starts fresh
+ * 
+ * Combine with --profile baseline|scoped to control whether the agent
+ * gets focused tasks or can do whatever it wants.
  */
 
 export interface EvalConfig {
-    enabled: boolean;              // Master switch (false = normal operation)
-    label: string;                 // Run label for output files
+    enabled: boolean;              // flip this on to activate eval mode
+    label: string;                 // shows up in output filenames
 
-    // Memory system
+    // these control what parts of the memory system are active
     disableTemporalMemory: boolean;
     disableShortTermContext: boolean;
     disableArousal: boolean;
@@ -17,24 +22,25 @@ export interface EvalConfig {
     disableConsolidation: boolean;
     disableReflection: boolean;
 
-    // Motivation
+    // motivation stuff
     disableDrives: boolean;
     disableHypotheses: boolean;
 
-    // Evolution
+    // evolutionary behavior
     disableStrategies: boolean;
     disablePolicyMutation: boolean;
 
-    // Loop control
+    // prevents the agent from detecting when it's stuck
     disableStagnationDetection: boolean;
 
-    // API
+    // if you want to tweak how many things fit in short-term memory
+    stmSize?: number;
+
+    // use fake API responses instead of hitting the real service
     useMockApi: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Default: everything ON, eval OFF
-// ---------------------------------------------------------------------------
+// everything enabled by default, eval mode off
 const DEFAULT_CONFIG: EvalConfig = {
     enabled: false,
     label: "default",
@@ -45,16 +51,14 @@ const DEFAULT_CONFIG: EvalConfig = {
     disableConsolidation: false,
     disableReflection: false,
     disableDrives: false,
-    disableHypotheses: false,
+    disableHypotheses: true,   // disabled: Moltbook bot environment provides no meaningful signal
     disableStrategies: false,
     disablePolicyMutation: false,
     disableStagnationDetection: false,
     useMockApi: false,
 };
 
-// ---------------------------------------------------------------------------
-// Singleton state
-// ---------------------------------------------------------------------------
+// we store the active config here so any module can check it
 let currentConfig: EvalConfig = { ...DEFAULT_CONFIG };
 
 export function getEvalConfig(): EvalConfig {
@@ -69,89 +73,45 @@ export function resetEvalConfig(): void {
     currentConfig = { ...DEFAULT_CONFIG };
 }
 
-/** Convenience: check if a specific flag is active (master switch AND flag) */
-export function isDisabled(flag: keyof Omit<EvalConfig, "enabled" | "label" | "useMockApi">): boolean {
+/**
+ * Quick way to check if a feature is turned off.
+ * Only returns true if we're in eval mode AND the specific flag is set.
+ */
+export function isDisabled(flag: keyof Omit<EvalConfig, "enabled" | "label" | "useMockApi" | "stmSize">): boolean {
     return currentConfig.enabled && currentConfig[flag];
 }
 
-// ---------------------------------------------------------------------------
-// Named presets
-// ---------------------------------------------------------------------------
+// helper to create a preset with sensible defaults
 function preset(label: string, overrides: Partial<EvalConfig>): EvalConfig {
     return { ...DEFAULT_CONFIG, enabled: true, label, ...overrides };
 }
 
+/*
+ * The two presets we actually care about:
+ * 
+ * FULL_SYSTEM - agent has all its memory, good for seeing long-term behavior
+ * NO_STM - no short-term context, so each action is basically independent
+ */
+
+/** everything on - use this to see how the agent behaves with full memory */
 export const FULL_SYSTEM = preset("full", {});
 
-export const NO_MEMORY = preset("no-memory", {
-    disableTemporalMemory: true,
-});
-
-export const NO_AROUSAL = preset("no-arousal", {
-    disableArousal: true,
-});
-
-export const NO_SPREADING = preset("no-spreading", {
-    disableSpreadingActivation: true,
-});
-
+/** short-term memory disabled - agent won't remember what it just did */
 export const NO_STM = preset("no-stm", {
     disableShortTermContext: true,
 });
 
-export const NO_DRIVES = preset("no-drives", {
-    disableDrives: true,
-});
-
-export const NO_HYPOTHESES = preset("no-hypotheses", {
-    disableHypotheses: true,
-});
-
-export const NO_STAGNATION = preset("no-stagnation", {
-    disableStagnationDetection: true,
-});
-
-export const NO_EVOLUTION = preset("no-evolution", {
-    disableStrategies: true,
-    disablePolicyMutation: true,
-});
-
-export const BASELINE = preset("baseline", {
-    disableTemporalMemory: true,
-    disableShortTermContext: true,
-    disableArousal: true,
-    disableSpreadingActivation: true,
-    disableConsolidation: true,
-    disableReflection: true,
-    disableDrives: true,
-    disableHypotheses: true,
-    disableStrategies: true,
-    disablePolicyMutation: true,
-    disableStagnationDetection: true,
-});
-
-/** Look up a preset by name (case-insensitive). Returns undefined if unknown. */
+/** get a preset by name, handles various formats like "no-stm" or "NO_STM" */
 export function getPreset(name: string): EvalConfig | undefined {
     const presets: Record<string, EvalConfig> = {
         full_system: FULL_SYSTEM,
         full: FULL_SYSTEM,
-        no_memory: NO_MEMORY,
-        no_arousal: NO_AROUSAL,
-        no_spreading: NO_SPREADING,
         no_stm: NO_STM,
-        no_drives: NO_DRIVES,
-        no_hypotheses: NO_HYPOTHESES,
-        no_stagnation: NO_STAGNATION,
-        no_evolution: NO_EVOLUTION,
-        baseline: BASELINE,
     };
     return presets[name.toLowerCase().replace(/-/g, "_")];
 }
 
-/** List all available preset names */
+/** returns the names you can use with --preset */
 export function listPresets(): string[] {
-    return [
-        "FULL_SYSTEM", "NO_MEMORY", "NO_STM", "NO_AROUSAL", "NO_SPREADING",
-        "NO_DRIVES", "NO_HYPOTHESES", "NO_STAGNATION", "NO_EVOLUTION", "BASELINE",
-    ];
+    return ["FULL", "NO_STM"];
 }

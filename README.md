@@ -33,13 +33,11 @@ src/agent/core/
   llmFactory.ts          LLM instance factory (OpenAI-compatible)
   timeUtils.ts           Time utilities
 
-src/eval/                Evaluation and ablation framework
-  evalConfig.ts          Feature flag singleton + ablation presets
+src/eval/                Evaluation modes (STM/no-STM + scope/baseline)
+  evalConfig.ts          Feature flag singleton + STM presets
+  runner.ts              Runs N agent cycles
   mockActions.ts         Deterministic mock API (seeded PRNG)
-  runner.ts              Runs N agent cycles, collects per-cycle metrics
-  metrics.ts             Aggregate statistics (mean, median, entropy)
-  report.ts              Paper-ready markdown comparison tables
-  retrospective.ts       Historical outcome analysis
+  taskScopes.ts          Task scope definitions
 
 adapters/                Optional environment adapters (quarantined)
   moltbook/              Social platform adapter (LangGraph state machine)
@@ -73,27 +71,38 @@ A three-tier memory architecture (episodic/semantic/procedural) backed by SQLite
 
 **Hypothesis learning**: Bayesian Beta-Binomial model for causal understanding. The agent forms hypotheses about action-outcome relationships and updates beliefs from observed evidence.
 
-## Evaluation Framework
+## Evaluation Modes
 
-The eval system supports controlled ablation experiments via feature flags. Each subsystem has a guard at its entry point that checks `isDisabled(flag)` -- in normal operation, every guard is a no-op.
+The eval system supports two primary modes based on behavioral evaluation insights:
 
-### Ablation Presets
+### STM Modes (Presets)
 
-| Preset | Disabled subsystems |
-|--------|-------------------|
-| `FULL_SYSTEM` | None (control condition) |
-| `NO_MEMORY` | Temporal memory retrieval |
-| `NO_STM` | Short-term context (keeps semantic retrieval, removes TTL decay/eviction) |
-| `NO_AROUSAL` | Arousal estimation |
-| `NO_SPREADING` | Spreading activation in retrieval |
-| `NO_CONSOLIDATION` | Memory consolidation |
-| `NO_DRIVES` | Drive system |
-| `NO_STRATEGIES` | Strategy rotation |
-| `NO_POLICY_MUTATION` | Policy evolution |
-| `NO_HYPOTHESES` | Hypothesis learning |
-| `MINIMAL_BASELINE` | All subsystems disabled |
+| Preset | Description | Use Case |
+|--------|-------------|----------|
+| `full` | STM enabled | Long-term autonomous, memory builds across cycles |
+| `no-stm` | STM disabled | Short-term focused, fresh context each cycle |
 
-The mock API provides deterministic, stateful responses using a seeded PRNG, enabling reproducible experiments where posts the agent creates appear in subsequent feed calls with simulated engagement.
+### Profiles
+
+| Profile | Description |
+|---------|-------------|
+| `baseline` | No scope constraints |
+| `scoped` | Uses scope selector for focused behavior |
+
+### Recommended Combinations
+
+- **STM + baseline**: Long-term autonomous mode
+- **no-STM + scoped**: Short-term focused mode
+
+```bash
+# Long-term autonomous
+npm run dev -- eval run --preset full --profile baseline --cycles 5
+
+# Short-term focused  
+npm run dev -- eval run --preset no-stm --profile scoped --cycles 5
+```
+
+The mock API provides deterministic, stateful responses using a seeded PRNG, enabling reproducible experiments.
 
 ## Data Storage
 

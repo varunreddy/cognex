@@ -105,28 +105,158 @@ Each memory has an `arousal` field (0-1) estimated at encoding via keyword heuri
 - **STM TTL**: Up to +50% extension for arousal > 0.3
 - **Eviction fitness**: `score * (1 + arousal * 0.3)` — aroused memories resist eviction
 
-### 6. Memory Consolidation
+### 6. Memory Consolidation ("Sleep Cycle")
 
-Triggered periodically or manually (`npm run dev -- memory consolidate`). Merges similar episodic memories into semantic insights, strengthens frequently co-retrieved memory links, and prunes weak connections.
+Consolidation is the process of converting raw episodic memories into higher-level semantic understanding — similar to how humans consolidate memories during sleep.
 
-### 7. Hypothesis Learning
+**Trigger:**
+- Manually: `npm run dev -- memory consolidate`
+- Automatically: after certain thresholds (e.g., 50 memories)
 
-`hypotheses.ts` tracks behavioral hypotheses formed from action outcomes. When the agent posts and gets engagement, hypotheses about what works are updated. Disabled hypotheses don't form new beliefs.
+**How it works:**
 
-### 8. Self-Reflection
+1. **Cluster similar episodic memories** — Groups memories with similar embeddings (e.g., all posts about "gaming")
+2. **Extract semantic insights** — LLM synthesizes the cluster into a general principle:
+   ```
+   Episodic: "Posted in /c/gaming, got 5 upvotes"
+   Episodic: "Posted in /c/gaming about speedruns, got 12 upvotes"
+   Episodic: "Posted generic gaming content, got 2 upvotes"
+   → Semantic: "Gaming posts with specific topics (speedruns) get more engagement"
+   ```
+3. **Strengthen memory links** — Co-retrieved memories get stronger graph edges
+4. **Prune weak memories** — Old, low-importance, rarely-accessed episodics are degraded
+5. **Decay unaccessed memories** — Episodic memories not retrieved recently lose importance
 
-Triggers:
+**Output:**
+```typescript
+{
+  semantics_created: 3,    // New semantic memories formed
+  memories_decayed: 12,    // Episodics that lost importance
+  memories_pruned: 5,      // Weak episodics removed
+  duration_ms: 1523
+}
+```
+
+**Ablation flag:** `disableConsolidation` — returns empty result
+
+---
+
+### 7. Hypothesis Learning (Bayesian Causal Model)
+
+> **⚠️ Currently Disabled by Default**
+> 
+> **Why:** Hypothesis learning requires meaningful reward signals to work correctly. In bot-populated environments (like Moltbook), all posts receive upvotes regardless of quality, which creates several problems:
+> 
+> 1. **No signal variance** — Every hypothesis gets "confirmed" because everything appears to work
+> 2. **Local maxima trap** — Agent reinforces whatever it tried first, even if not optimal
+> 3. **Echo chamber effect** — Agent may focus on single topics that "worked" (got upvotes like everything else)
+> 4. **False confidence** — High confidence scores (80%+) on meaningless correlations
+> 
+> **When to re-enable:** When testing with real users who provide genuine, sparse feedback. The system is designed for environments where success is distinguishable from failure.
+
+Hypotheses are the agent's learned beliefs about cause-and-effect relationships between actions and outcomes.
+
+**How it works:**
+
+1. **Hypothesis formation** — When the agent takes an action (e.g., "posts with humor"), a hypothesis is created:
+   ```typescript
+   {
+     trigger: "post_with_humor",
+     belief: "Posts with humor get more engagement",
+     alpha: 1,  // Success count (prior)
+     beta: 1    // Failure count (prior)
+   }
+   ```
+
+2. **Outcome observation** — After the action, the result is observed:
+   - Post got 10 upvotes → Success → `alpha += 1`
+   - Post got 0 upvotes → Failure → `beta += 1`
+
+3. **Bayesian update** — Confidence calculated using Beta distribution:
+   ```
+   confidence = alpha / (alpha + beta)
+   ```
+   - After 10 successes, 2 failures: confidence = 10/12 = 0.83 (83%)
+   - After 2 successes, 10 failures: confidence = 2/12 = 0.17 (17%)
+
+4. **Belief-guided action** — High-confidence hypotheses influence future decisions:
+   ```
+   "I believe posts with humor work (83% confidence), so I'll use humor"
+   ```
+
+**Example hypotheses:**
+| Trigger | Belief | α | β | Confidence |
+|---------|--------|---|---|------------|
+| `morning_posts` | Morning posts get more views | 8 | 3 | 73% |
+| `controversial_topics` | Controversial topics get engagement | 5 | 7 | 42% |
+| `reply_to_comments` | Replying increases thread depth | 12 | 2 | 86% |
+
+**Ablation flag:** `disableHypotheses` — `processOutcome()` returns early, no beliefs updated
+
+---
+
+### 8. Self-Reflection (LLM-Driven Introspection)
+
+Reflection is the agent analyzing its own behavior to generate insights and update its personality.
+
+**Triggers:**
 - Every 50 interactions
-- Every 24 hours
-- Manually via `npm run dev -- memory reflect`
+- Every 24 hours (time-based)
+- Manually: `npm run dev -- memory reflect`
 
-Process:
-1. Analyze last 20 memories with LLM
-2. Generate 3-5 insights
-3. Create semantic memories from insights
-4. Link related episodic memories
-5. Update personality shell parameters
+**How it works:**
 
+1. **Gather recent memories** — Retrieves last 20 episodic memories
+   ```
+   Memory 1: "Posted about AI ethics, got 15 upvotes"
+   Memory 2: "Commented on controversial topic, got moderated"
+   Memory 3: "Explored /c/science, found interesting discussions"
+   ...
+   ```
+
+2. **LLM analysis** — The memories are sent to the LLM with a reflection prompt:
+   ```
+   "Analyze these experiences. What patterns do you notice? 
+    What should you do more or less of?"
+   ```
+
+3. **Generate insights** — LLM produces 3-5 actionable insights:
+   ```
+   - "Posts about specific technical topics get more engagement"
+   - "Avoid controversial topics — moderation risk is high"
+   - "The science community values well-researched content"
+   ```
+
+4. **Create semantic memories** — Each insight becomes a new semantic memory:
+   ```typescript
+   {
+     content: "Posts about specific technical topics get more engagement",
+     type: "semantic",
+     importance: 0.8,
+     source: "self_reflection"
+   }
+   ```
+
+5. **Link related memories** — Episodics that contributed to the insight are linked
+
+6. **Update personality** — Insights can trigger persona parameter changes:
+   ```
+   Insight: "Humor posts get more engagement"
+   → Increase humor_level parameter by 0.05
+   ```
+
+**Output:**
+```typescript
+{
+  insights: ["...", "...", "..."],
+  memories_created: 3,
+  links_created: 8,
+  personality_updates: { humor_level: +0.05 },
+  duration_ms: 2341
+}
+```
+
+**Ablation flag:** `disableReflection` — reflection returns empty result
 ## CLI Commands
 
 ```bash

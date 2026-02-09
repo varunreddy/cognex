@@ -62,6 +62,7 @@ export interface ActionOutcome {
 }
 
 // Constants
+const HYPOTHESES_ENABLED = false;  // DISABLED: Moltbook bot environment provides meaningless feedback
 const CONFIRMATION_THRESHOLD = 0.8;   // Confidence above this = confirmed
 const REFUTATION_THRESHOLD = 0.2;     // Confidence below this = refuted
 const MIN_TESTS_FOR_CONCLUSION = 5;   // Minimum tests before status change
@@ -216,7 +217,9 @@ export function updateHypothesis(id: string, wasSuccessful: boolean): void {
  * Process an action outcome and update relevant hypotheses
  */
 export function processOutcome(outcome: ActionOutcome): void {
-    if (isDisabled('disableHypotheses')) return;
+    // disabled globally or via eval config
+    if (!HYPOTHESES_ENABLED || isDisabled('disableHypotheses')) return;
+
     // Find matching hypotheses
     const context: HypothesisContext = {
         action_type: outcome.action_type,

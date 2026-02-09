@@ -5,6 +5,13 @@
 
 import { BaseMessage } from "@langchain/core/messages";
 
+export interface TaskScopeDecision {
+    name: string;
+    objective: string;
+    allowed_actions: string[];
+    exit?: boolean;
+}
+
 // --- Credentials ---
 
 export interface MoltbookCredentials {
@@ -155,6 +162,7 @@ export interface AgentState {
     messages: BaseMessage[];
     user_request?: string;
     mode: "single" | "loop" | "chat";
+    cycle_time: number;        // Date.now() at cycle start — consistent across all nodes
     skills: Skill[];
     credentials?: MoltbookCredentials;
     loop_state?: LoopState;
@@ -166,6 +174,9 @@ export interface AgentState {
     step_count: number;
     max_steps: number;
     search_exhausted?: boolean;
+    current_scope?: TaskScopeDecision;
+    allowed_actions?: string[];
+    use_scope_selector?: boolean;
 }
 
 // --- LLM Config ---

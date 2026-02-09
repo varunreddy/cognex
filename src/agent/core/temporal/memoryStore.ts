@@ -29,7 +29,21 @@ let vecExtensionLoaded = false;
 // Determine embedding dimension based on config
 function getEmbeddingDimension(): number {
     const config = loadLLMConfig();
-    // Default to 1536 (OpenAI) unless explicitly local (384)
+    const model = config?.embedding_model || '';
+
+    // Dimension mapping for known models
+    const DIMENSIONS: Record<string, number> = {
+        'text-embedding-3-small': 1536,
+        'text-embedding-3-large': 3072,
+        'text-embedding-ada-002': 1536,
+        'Xenova/all-MiniLM-L6-v2': 384,
+    };
+
+    if (DIMENSIONS[model]) {
+        return DIMENSIONS[model];
+    }
+
+    // Default to 1536 (OpenAI standard) or 384 (Xenova default)
     if (config?.embedding_provider === 'local') {
         return 384;
     }
@@ -92,6 +106,20 @@ function initializeVectorTable(): void {
     const dim = getEmbeddingDimension();
 
     try {
+        // Check if table already exists and what its dimension is
+        const existingTable = db.prepare("SELECT sql FROM sqlite_master WHERE name='memory_vec'").get() as any;
+
+        if (existingTable) {
+            const sql = existingTable.sql;
+            const match = sql.match(/float\[(\d+)\]/);
+            const existingDim = match ? parseInt(match[1], 10) : null;
+
+            if (existingDim !== dim) {
+                console.warn(`[MEMORY] Dimension mismatch detected (stored: ${existingDim}, current: ${dim}). Recreating vector index...`);
+                db.exec(`DROP TABLE memory_vec;`);
+            }
+        }
+
         // Create vec0 virtual table for vector search
         db.exec(`
             CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec USING vec0(
@@ -99,6 +127,17 @@ function initializeVectorTable(): void {
                 embedding float[${dim}]
             );
         `);
+
+        // If we dropped and recreated, we need to populate it from main table
+        const count = (db.prepare("SELECT COUNT(*) as count FROM memory_vec").get() as any).count;
+        if (count === 0) {
+            const memoryCount = (db.prepare("SELECT COUNT(*) as count FROM long_term_memories").get() as any).count;
+            if (memoryCount > 0) {
+                console.log(`[MEMORY] Populating recreated vector index with ${memoryCount} memories...`);
+                rebuildVectorIndex();
+            }
+        }
+
         console.log(`[MEMORY] Vector index table initialized (dim: ${dim})`);
     } catch (error: any) {
         console.warn(`[MEMORY] Could not create vector table: ${error.message}`);
