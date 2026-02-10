@@ -380,7 +380,7 @@ export function cleanChatReply(reply: string): string {
     return cleaned.trim();
 }
 
-function createPlannerNode<TState extends BaseAgentState>(
+export function createPlannerNode<TState extends BaseAgentState>(
     adapter: AgentAdapter<TState>
 ) {
     return async function plannerNode(state: TState): Promise<Partial<TState>> {
