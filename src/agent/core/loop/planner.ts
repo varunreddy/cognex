@@ -292,10 +292,10 @@ function computeForbiddenActions(state: BaseAgentState): {
     if (repetitionCount >= 2) {
         const shouldExemptChatReply = state.mode === "chat" && lastActionType === "reply_to_user";
         if (!shouldExemptChatReply) {
-        antiRepetitionWarning = `\n\n⚠️ WARNING: You have repeated "${lastActionType}" multiple times. YOU MUST STOP. Choose a different action.`;
-        if (!forbiddenActions.includes(lastActionType)) {
-            forbiddenActions.push(lastActionType);
-        }
+            antiRepetitionWarning = `\n\n⚠️ WARNING: You have repeated "${lastActionType}" multiple times. YOU MUST STOP. Choose a different action.`;
+            if (!forbiddenActions.includes(lastActionType)) {
+                forbiddenActions.push(lastActionType);
+            }
         }
     }
 
@@ -361,7 +361,26 @@ function buildRetrievalQuery(state: BaseAgentState): string {
 /**
  * Create a planner node for the given adapter
  */
-export function createPlannerNode<TState extends BaseAgentState>(
+export function cleanChatReply(reply: string): string {
+    let cleaned = reply;
+
+    // Remove JSON blocks (```json ... ```)
+    cleaned = cleaned.replace(/```json[\s\S]*?```/gi, "");
+
+    // Remove XML-like action blocks (<action_type>...</action_type>)
+    cleaned = cleaned.replace(/<action_type>[\s\S]*?<\/action_type>/gi, "");
+    cleaned = cleaned.replace(/<parameters>[\s\S]*?<\/parameters>/gi, "");
+
+    // Remove standalone JSON objects that look like actions
+    cleaned = cleaned.replace(/\{\s*"action_type"[\s\S]*?\}/gi, "");
+
+    // Remove artifacts like "```" or "Action:"
+    cleaned = cleaned.replace(/```/g, "").replace(/^Action:\s*/i, "");
+
+    return cleaned.trim();
+}
+
+function createPlannerNode<TState extends BaseAgentState>(
     adapter: AgentAdapter<TState>
 ) {
     return async function plannerNode(state: TState): Promise<Partial<TState>> {
@@ -369,7 +388,7 @@ export function createPlannerNode<TState extends BaseAgentState>(
 
         // Retrieve relevant memories
         const retrievalQuery = buildRetrievalQuery(state);
-        await retrieveAndLoadContext(retrievalQuery, { topK: 5 });
+        await retrieveAndLoadContext(retrievalQuery, { topK: 10 });
 
         // Compute forbidden actions
         const { forbiddenActions, antiRepetitionWarning, stagnationWarning } =
@@ -391,35 +410,66 @@ export function createPlannerNode<TState extends BaseAgentState>(
             : "";
         const fullPrompt = systemPrompt + scopePrompt + antiRepetitionWarning + stagnationWarning;
 
-        // Chat mode: respond directly in natural language instead of forcing JSON action planning.
-        // This avoids repeated fallback templates when JSON formatting degrades.
+        // Chat mode: default to natural language, but ALLOW actions if user explicitly requests them.
         if (state.mode === "chat") {
-            const chatLlm = getLLM({ jsonMode: false });
-            let chatReply = await invokeLLM(chatLlm, [
-                new SystemMessage(
-                    `${fullPrompt}
+            // Check if user is continuously asking for an action (heuristic)
+            const isActionRequest = /search|browse|check|read|feed|find/i.test(userRequest);
+            const jsonMode = isActionRequest; // Enable JSON mode if action keywords are present
 
-You are in direct chat mode.
-- Reply naturally to the user's message in 2-6 sentences.
-- Be specific and useful; avoid asking "quick summary or deeper dive" unless user explicitly asks for options.
-- If user asks "what have you been doing lately", summarize recent concrete activity from memory/history.
-- Do not claim you are about to execute tools/actions in this message.
-- Do not output JSON.`
-                ),
+            const chatLlm = getLLM({ jsonMode });
+
+            let systemInstruction = jsonMode
+                ? `${fullPrompt}\n\nYou are in direct chat mode but the user requested an action.\n- If the user wants to search, check feed, or browse, output the corresponding JSON action.\n- If no action is needed, just reply naturally.\n- Do NOT use 'reply_to_user' if performing another action.`
+                : `${fullPrompt}\n\nYou are in direct chat mode.\n- Reply naturally to the user's message in 2-6 sentences.\n- Do not output JSON unless you are SURE the user wants to execute a tool (like search or get_feed).\n- If you reply with text, do not claim you are about to execute tools you aren't calling.`;
+
+            let chatReply = await invokeLLM(chatLlm, [
+                new SystemMessage(systemInstruction),
                 new HumanMessage(userRequest),
             ]);
+
+            // If reply contains JSON action, parse it and return it as a real action
+            if (containsActionJson(chatReply)) {
+                try {
+                    // Extract JSON
+                    const jsonMatch = chatReply.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        const availableActions = adapter.getActionTypes().map(a => a.toLowerCase());
+                        const resolvedActionType = resolveActionType(parsed.action_type, availableActions);
+
+                        if (resolvedActionType && resolvedActionType !== "reply_to_user") {
+                            console.log(`[PLANNER] Chat mode triggered action: ${resolvedActionType}`);
+                            return {
+                                current_action: {
+                                    type: resolvedActionType,
+                                    parameters: parsed.parameters || {},
+                                    status: "pending",
+                                },
+                                execution_log: [`Planned(chat-action): ${resolvedActionType}`],
+                            } as Partial<TState>;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("[PLANNER] Failed to parse action in chat mode, falling back to text", e);
+                }
+            }
+
+            // Otherwise treat as text reply
+            let cleanedReply = cleanChatReply(chatReply);
             const previousReply = getLastChatReply(state);
+
+            // Retry if empty after cleaning, or repetitive
             if (
-                (previousReply && chatReply.trim() === previousReply)
-                || isTemplateLikeChatReply(chatReply)
-                || containsActionJson(chatReply)
+                !cleanedReply ||
+                (previousReply && cleanedReply === previousReply) ||
+                isTemplateLikeChatReply(cleanedReply)
             ) {
                 chatReply = await invokeLLM(chatLlm, [
                     new SystemMessage(
                         `${fullPrompt}
 
 You are in direct chat mode.
-- Your previous draft repeated earlier text verbatim.
+- Your previous draft repeated earlier text verbatim OR contained only action code (which is forbidden).
 - Write a different response that directly addresses this user message.
 - Include one concrete detail from context or memory.
 - Do not use generic offer templates like "quick summary or deeper dive."
@@ -429,13 +479,16 @@ You are in direct chat mode.
                     ),
                     new HumanMessage(userRequest),
                 ]);
+                cleanedReply = cleanChatReply(chatReply);
             }
-            if (containsActionJson(chatReply)) {
-                chatReply = buildChatFallbackReply(userRequest);
+
+            // Fallback if still broken
+            if (!cleanedReply) {
+                cleanedReply = buildChatFallbackReply(userRequest);
             }
 
             return {
-                current_action: asChatReplyAction(chatReply),
+                current_action: asChatReplyAction(cleanedReply),
                 execution_log: ["Planned(chat-direct): reply_to_user"],
             } as Partial<TState>;
         }

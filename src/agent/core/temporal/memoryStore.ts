@@ -20,8 +20,10 @@ import { serializeEmbedding, deserializeEmbedding } from './embedding';
 
 import { loadLLMConfig } from '../llmConfig';
 
-const MEMORY_DIR = path.join(os.homedir(), '.config', 'temporal-agent');
-const DB_PATH = path.join(MEMORY_DIR, 'temporal_memory.db');
+const MEMORY_DIR = process.env.TEMPORAL_MEMORY_PATH
+    ? path.dirname(process.env.TEMPORAL_MEMORY_PATH)
+    : path.join(os.homedir(), '.config', 'temporal-agent');
+const DB_PATH = process.env.TEMPORAL_MEMORY_PATH || path.join(MEMORY_DIR, 'temporal_memory.db');
 
 let db: Database.Database | null = null;
 let vecExtensionLoaded = false;

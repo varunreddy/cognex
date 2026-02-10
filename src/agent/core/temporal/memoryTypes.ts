@@ -76,6 +76,7 @@ export interface MemorySearchResult {
     similarity: number; // Cosine similarity to query
     retrieval_weight: number; // Logistic weight
     rrf_score?: number; // Reciprocal Rank Fusion score (for hybrid search)
+    relevance_score?: number; // Final reranked relevance score (0-1)
 }
 
 export interface MemoryStats {

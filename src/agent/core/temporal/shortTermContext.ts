@@ -96,13 +96,9 @@ export function loadIntoShortTerm(
         const expiresAt = new Date(currentTime.getTime() + ttlSeconds * 1000).toISOString();
 
         if (isDuplicate && duplicateSlot) {
-            // Skip refresh if existing slot is still strong (> 0.7 strength)
-            // This breaks the eternal refresh loop where the loop re-retrieves
-            // the same memories and keeps them immortal at ~100% strength.
-            const existingStrength = getCurrentStrength(duplicateSlot);
-            if (existingStrength > 0.7) {
-                continue;
-            }
+            // Always refresh if retrieved again. This mimics biological reconsolidation
+            // and ensures the "Freshness Boost" applies to recently accessed memories.
+
 
             // MERGE POLICY: Update existing slot if new activation is higher or fresh
             // We reinforce the existing memory slot
@@ -148,7 +144,17 @@ function performCompetitiveEviction(): void {
         const strength = getCurrentStrength(slot);
         const memory = getMemory(slot.memory_id);
         const arousalBonus = memory ? (memory.arousal ?? 0) * 0.3 : 0;
-        const score = strength * slot.retrieval_weight * (1 + arousalBonus);
+
+        let score = strength * slot.retrieval_weight * (1 + arousalBonus);
+
+        // FRESHNESS BOOST: Protect items loaded in the last 10 seconds
+        // This ensures that new auto-retrieved memories (like the user msg just received)
+        // are not immediately evicted if STM is full of high-arousal items.
+        const ageSeconds = (new Date().getTime() - new Date(slot.loaded_at).getTime()) / 1000;
+        if (ageSeconds < 10) {
+            score += 10.0; // Massive boost to guarantee survival
+        }
+
         return { slot, score };
     });
 
@@ -251,12 +257,16 @@ export function getContextForPrompt(): string {
         if (!memory) continue;
 
         const strength = getCurrentStrength(slot);
-        const age = getMemoryAge(memory.created_at);
-
-        // Format: [strength] [type] (age) - content
+        // Format: [strength] [type] [time] - content
+        const timestamp = new Date(memory.created_at).toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Kolkata',
+        });
         const strengthBar = '\u2588'.repeat(Math.round(strength * 5)); // Visual strength indicator
         const typeLabel = `[${memory.type}]`;
-        memoryTexts.push(`[${strengthBar.padEnd(5, '\u2591')}] ${typeLabel} (${age}) ${memory.content}`);
+        memoryTexts.push(`[${strengthBar.padEnd(5, '\u2591')}] ${typeLabel} [${timestamp}] ${memory.content}`);
     }
 
     return `${temporalState}\n\n## Active Memories (${slots.length})\n\n${memoryTexts.join('\n')}`;

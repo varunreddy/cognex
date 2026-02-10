@@ -71,7 +71,14 @@ function rerankByRelevance(
         // Blend semantic, retrieval strength, and lexical query alignment.
         // We keep lexical lower than semantic to avoid BM25-only keyword traps.
         const score = (semantic * 0.55) + (retrievalWeight * 0.25) + (overlap * 0.20);
-        return { result, score, overlap, semantic };
+
+        // Return enriched result with relevance_score
+        return {
+            result: { ...result, relevance_score: score },
+            score,
+            overlap,
+            semantic
+        };
     });
 
     // Drop low-signal matches when we have enough candidates.
@@ -423,9 +430,12 @@ export async function retrieve(
 
     if (!useSpreadingActivation) {
         // Return only direct search results
+        // When skipping spreading activation, we treat the found memories as "seeds" (activation 1.0)
+        // just like spreadingActivation() would. This ensures manual loads (like from adapter)
+        // are prioritized in STM and not evicted immediately.
         return searchResults.map(r => ({
             memory: r.memory,
-            activation: r.rrf_score || (r.similarity * r.retrieval_weight),
+            activation: 1.0,
             depth: 0,
         }));
     }
