@@ -1,138 +1,13 @@
-# Temporal Control-State Architecture
+# Cognex
 
-This repository implements a temporal control-state architecture for long-running autonomous agents. It provides a biologically-inspired memory system with time-aware decay, consolidation, and retrieval mechanisms, coupled with an adaptive control layer that governs agent behavior through drives, strategies, and evolutionary policy mutation.
+Cognex is an abstract cognitive memory module designed to operate seamlessly via the Model Context Protocol (MCP). It provides persistent episodic and semantic memory storage, autonomous motivation states (drives/fitness), and vectorized local embeddings.
 
-> **Note:** This architecture is intentionally task-free and evaluated by action semantics rather than task completion. See [`ARCHITECTURE_INTENT.md`](./ARCHITECTURE_INTENT.md) for design rationale and evaluation philosophy.
-
-## Architecture Overview
-
-```
-src/agent/core/
-  temporal/              Temporal memory system (episodic/semantic/procedural)
-    memoryTypes.ts         Type definitions for all memory structures
-    schema.sql             SQLite + sqlite-vec + FTS5 schema
-    arousal.ts             Keyword-based emotional intensity estimation
-    embedding.ts           Text -> vector embeddings (Xenova/transformers)
-    memoryStore.ts         CRUD operations, vector search, FTS5 search
-    retrieval.ts           Hybrid BM25 + semantic search with RRF + spreading activation
-    shortTermContext.ts    TTL-based working memory with sigmoid decay
-    consolidation.ts       "Sleep" cycle: episodic -> semantic compression
-    reflection.ts          LLM-driven self-analysis and insight generation
-    hypotheses.ts          Bayesian Beta-Binomial causal learning
-    recovery.ts            Belief correction from contradictory evidence
-
-  drives.ts              Need system (social/curiosity/competence) with time-based decay
-  strategies.ts          Strategy rotation (conservative/aggressive/exploratory)
-  policyMutation.ts      Evolutionary parameter changes with fitness gradient
-  policyStore.ts         Procedural memory: trigger->rule policy store
-  driftTracker.ts        Identity drift detection (phase, polarization, contradictions)
-  fitness.ts             Environment-agnostic fitness scoring
-  persona.ts             Persona management and mutation
-  identity/              Core identity invariants and validation
-  outcomeLogger.ts       Raw action/outcome logging
-  snapshots.ts           State snapshots for replay and comparison
-  llmConfig.ts           LLM provider configuration
-  llmFactory.ts          LLM instance factory (OpenAI-compatible)
-  timeUtils.ts           Time utilities
-
-src/eval/                Evaluation modes (STM/no-STM + scope/baseline)
-  evalConfig.ts          Feature flag singleton + STM presets
-  runner.ts              Runs N agent cycles
-  taskScopes.ts          Task scope definitions
-
-adapters/                Optional environment adapters (quarantined)
-  search/                Web search via Tavily (LLM synthesis + memory integration)
-```
-
-## Core Contributions
-
-### Temporal Memory System
-
-A three-tier memory architecture (episodic/semantic/procedural) backed by SQLite with sqlite-vec for vector similarity and FTS5 for full-text search.
-
-**Retrieval** combines BM25 lexical scores with cosine similarity via Reciprocal Rank Fusion (RRF), then applies spreading activation across a memory link graph. Retrieved memories are injected into the agent's context window with recency and importance weighting.
-
-**Short-term context** maintains a bounded working memory with TTL-based eviction. Each slot's effective strength follows a sigmoid decay curve, enabling graceful degradation rather than hard cutoffs.
-
-**Consolidation** runs a periodic "sleep" cycle that compresses clusters of episodic memories into higher-level semantic memories, with promotion gating that requires minimum evidential support before generalization.
-
-**Arousal estimation** scores incoming content on emotional intensity using keyword matching across categories (crisis, achievement, conflict, etc.), influencing memory importance and retrieval priority.
-
-### Adaptive Control Layer
-
-**Drives**: Three motivational needs (social, curiosity, competence) that decay over time and are partially satisfied by agent actions. The highest-urgency drive biases action selection.
-
-**Strategies**: Weighted rotation between conservative, aggressive, and exploratory behavioral profiles. Strategy selection probability adapts based on recent fitness outcomes.
-
-**Policy mutation**: Evolutionary parameter adjustment where the agent's behavioral parameters (temperature, risk tolerance, verbosity) mutate probabilistically, with selection pressure from a fitness gradient.
-
-**Identity drift tracking**: Monitors semantic consistency over time, detecting phase transitions, measuring polarization index, and flagging contradictions between current and historical behavior.
-
-**Hypothesis learning**: Bayesian Beta-Binomial model for causal understanding. The agent forms hypotheses about action-outcome relationships and updates beliefs from observed evidence.
-
-## Evaluation Modes
-
-The eval system supports two primary modes based on behavioral evaluation insights:
-
-### STM Modes (Presets)
-
-| Preset | Description | Use Case |
-|--------|-------------|----------|
-| `full` | STM enabled | Long-term autonomous, memory builds across cycles |
-| `no-stm` | STM disabled | Short-term focused, fresh context each cycle |
-
-### Profiles
-
-| Profile | Description |
-|---------|-------------|
-| `baseline` | No scope constraints |
-| `scoped` | Uses scope selector for focused behavior |
-
-### Recommended Combinations
-
-- **STM + baseline**: Long-term autonomous mode
-- **no-STM + scoped**: Short-term focused mode
-
-```bash
-# Long-term autonomous
-npm run dev -- eval run --preset full --profile baseline --cycles 5
-
-# Short-term focused  
-npm run dev -- eval run --preset no-stm --profile scoped --cycles 5
-```
-
-The mock API provides deterministic, stateful responses using a seeded PRNG, enabling reproducible experiments.
-
-## Data Storage
-
-All persistent state is stored in `~/.config/cognex/`:
-
-| File | Purpose |
-|------|---------|
-| `llm-config.json` | LLM provider settings |
-| `temporal_memory.db` | SQLite database (memories, links, STM, reflections) |
-| `fitness.json` | Fitness scores and engagement stats |
-| `outcomes.jsonl` | Raw interaction history for evolution |
-| `identity.yaml` | Core personality invariants |
-| `policy.json` | Evolved policy parameters |
-| `hypotheses.json` | Learned behavioral hypotheses |
-| `drives.json` | Internal drive states |
-| `drift.json` | Identity drift tracking |
-| `snapshots/` | State snapshots for replay |
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v18+)
-- npm
-
-### Installation
+## Installation
 
 1. Clone the repository:
    ```bash
    git clone <repository-url>
-   cd cognex
+   cd Cognex
    ```
 
 2. Install dependencies:
@@ -140,26 +15,41 @@ All persistent state is stored in `~/.config/cognex/`:
    npm install
    ```
 
-3. Configure the agent:
+3. Build the project:
    ```bash
-   # interactive setup
-   npm run dev -- setup
+   npm run build
    ```
-   
-   Or manually create `~/.config/temporal-agent/llm-config.json` or a `.env` file (see `.env.example`).
 
-### Usage
+## Setup
 
-Run the agent with the unified CLI:
+Cognex is designed to run as an MCP server. Your client (e.g., Claude Code, Claude Desktop) can connect to it securely over standard I/O.
 
-```bash
-# Run a single action
-npm run dev -- run "Research the latest news on AI agents"
+Add Cognex to your MCP Client's configuration (using your actual absolute path to `server.js`):
 
-# Run an autonomous loop (3 cycles)
-npm run dev -- loop --cycles 3
+```json
+{
+  "mcpServers": {
+    "cognex": {
+      "command": "node",
+      "args": ["/path/to/Cognex/dist/src/mcp/server.js"]
+    }
+  }
+}
 ```
 
-## License
+*Note: Persistent data is stored securely in `~/.config/cognex/` on your host machine.*
 
-Research use.
+## Exposed MCP Tools
+
+When connected, Cognex exposes the following API tools for the LLM to interact with:
+
+- **`store_memory(content)`**: Write new episodic experiences.
+- **`query_memory(query, limit)`**: Search the knowledge graph (BM25 + Semantic Search).
+- **`add_semantic_memory(insight, confidence)`**: Save abstracted rules or learnings.
+- **`invalidate_memory(memory_id)`**: Prune false beliefs or hallucinations.
+- **`get_memory_stats()`**: Monitor memory volume and check the timestamp of `last_reflection`.
+- **`report_task_outcome(action, success_score)`**: Update the agent's internal fitness loop.
+- **`get_drive_state()`**: Query current urgency levels for exploration, social interaction, or competence.
+
+## Reflection & Memory Optimization
+Cognex relies entirely on the external LLM to classify and synthesize memories. Please review the provided **`reflect_skill.md`** file for explicit instructions on how to use Claude to reflect periodically and keep Cognex's database optimized.
