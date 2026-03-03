@@ -8,7 +8,13 @@ import { getDrivePrompt } from "../agent/core/drives.js";
 import { updateFitness } from "../agent/core/fitness.js";
 import { retrieve } from "../agent/core/temporal/retrieval.js";
 import { saveMemory } from "../agent/core/temporal/index.js";
-import { deleteMemory, getMemoryStats, updateMetadata } from "../agent/core/temporal/memoryStore.js";
+import { deleteMemory, getMemoryStats } from "../agent/core/temporal/memoryStore.js";
+import { getLocalExtractor } from "../agent/core/temporal/embedding.js";
+
+// Prevent MCP stdout contamination by routing all logs to stderr
+console.log = console.error;
+console.info = console.error;
+console.warn = console.error;
 
 const server = new Server(
     {
@@ -210,7 +216,32 @@ async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("Temporal Agent MCP Server running on stdio");
+
+    // Preload embedding model to prevent timeout on first tool use
+    try {
+        console.error("Preloading Xenova embedding model...");
+        await getLocalExtractor();
+        console.error("Embedding model ready.");
+    } catch (e: any) {
+        console.error("Warning: Could not preload embedding model:", e.message);
+    }
+
+    // Keepalive to prevent the event loop from prematurely exiting
+    setInterval(() => {
+        // Keep process alive
+    }, 60000);
 }
+
+// Clean shutdown hooks
+process.on('SIGINT', () => {
+    server.close();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    server.close();
+    process.exit(0);
+});
 
 main().catch((error) => {
     console.error("Fatal error running server:", error);

@@ -58,8 +58,111 @@ export function initializeDatabase(): Database.Database {
     }
 
     // Load and execute schema
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf-8');
+    const schema = `
+-- Temporal Memory System Database Schema
+CREATE TABLE IF NOT EXISTS long_term_memories (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    content TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('episodic', 'semantic', 'procedural')),
+    importance REAL NOT NULL CHECK(importance >= 0 AND importance <= 1),
+    arousal REAL NOT NULL DEFAULT 0.0 CHECK(arousal >= 0 AND arousal <= 1),
+    access_count INTEGER DEFAULT 0,
+    last_accessed TEXT,
+    tags TEXT NOT NULL,
+    metadata TEXT,
+    source TEXT NOT NULL CHECK(source IN ('user_interaction', 'autonomous_exploration', 'self_reflection', 'consolidation')),
+    base_decay_rate REAL DEFAULT 0.05
+);
+
+CREATE TABLE IF NOT EXISTS memory_links (
+    id TEXT PRIMARY KEY,
+    from_memory_id TEXT NOT NULL,
+    to_memory_id TEXT NOT NULL,
+    weight REAL NOT NULL CHECK(weight >= 0 AND weight <= 1),
+    link_type TEXT NOT NULL CHECK(link_type IN ('causal', 'temporal', 'semantic', 'correction', 'elaboration')),
+    created_at TEXT NOT NULL,
+    last_updated TEXT NOT NULL,
+    co_retrieval_count INTEGER DEFAULT 0,
+    initial_similarity REAL DEFAULT 0.0,
+    FOREIGN KEY (from_memory_id) REFERENCES long_term_memories(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_memory_id) REFERENCES long_term_memories(id) ON DELETE CASCADE,
+    UNIQUE(from_memory_id, to_memory_id)
+);
+
+CREATE TABLE IF NOT EXISTS short_term_context (
+    memory_id TEXT PRIMARY KEY,
+    loaded_at TEXT NOT NULL,
+    ttl_seconds INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    retrieval_weight REAL NOT NULL,
+    FOREIGN KEY (memory_id) REFERENCES long_term_memories(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reflections (
+    id TEXT PRIMARY KEY,
+    reflected_at TEXT NOT NULL,
+    trigger TEXT NOT NULL CHECK(trigger IN ('scheduled', 'error_detected', 'goal_achieved', 'manual')),
+    insights TEXT NOT NULL,
+    personality_updates TEXT,
+    memories_consolidated TEXT,
+    duration_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS system_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memories_created ON long_term_memories(created_at);
+CREATE INDEX IF NOT EXISTS idx_memories_accessed ON long_term_memories(last_accessed);
+CREATE INDEX IF NOT EXISTS idx_memories_type ON long_term_memories(type);
+CREATE INDEX IF NOT EXISTS idx_memories_importance ON long_term_memories(importance);
+CREATE INDEX IF NOT EXISTS idx_links_from ON memory_links(from_memory_id);
+CREATE INDEX IF NOT EXISTS idx_links_to ON memory_links(to_memory_id);
+CREATE INDEX IF NOT EXISTS idx_links_weight ON memory_links(weight);
+CREATE INDEX IF NOT EXISTS idx_stm_expires ON short_term_context(expires_at);
+CREATE INDEX IF NOT EXISTS idx_reflections_time ON reflections(reflected_at);
+
+INSERT OR IGNORE INTO system_metadata (key, value, updated_at) VALUES ('last_reflection', '', datetime('now'));
+INSERT OR IGNORE INTO system_metadata (key, value, updated_at) VALUES ('interaction_count', '0', datetime('now'));
+INSERT OR IGNORE INTO system_metadata (key, value, updated_at) VALUES ('schema_version', '1.0', datetime('now'));
+INSERT OR IGNORE INTO system_metadata (key, value, updated_at) VALUES ('last_consolidation', '', datetime('now'));
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+    content, tags, type, content='long_term_memories', content_rowid='rowid'
+);
+
+CREATE TRIGGER IF NOT EXISTS memory_fts_insert AFTER INSERT ON long_term_memories BEGIN
+    INSERT INTO memory_fts(rowid, content, tags, type) VALUES (NEW.rowid, NEW.content, NEW.tags, NEW.type);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memory_fts_delete AFTER DELETE ON long_term_memories BEGIN
+    INSERT INTO memory_fts(memory_fts, rowid, content, tags, type) VALUES ('delete', OLD.rowid, OLD.content, OLD.tags, OLD.type);
+END;
+
+CREATE TRIGGER IF NOT EXISTS memory_fts_update AFTER UPDATE ON long_term_memories BEGIN
+    INSERT INTO memory_fts(memory_fts, rowid, content, tags, type) VALUES ('delete', OLD.rowid, OLD.content, OLD.tags, OLD.type);
+    INSERT INTO memory_fts(rowid, content, tags, type) VALUES (NEW.rowid, NEW.content, NEW.tags, NEW.type);
+END;
+
+CREATE TABLE IF NOT EXISTS hypotheses (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    hypothesis TEXT NOT NULL,
+    evidence_for INTEGER DEFAULT 0,
+    evidence_against INTEGER DEFAULT 0,
+    confidence REAL DEFAULT 0.5,
+    context TEXT NOT NULL,
+    last_tested TEXT,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'confirmed', 'refuted', 'dormant'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_hypotheses_status ON hypotheses(status);
+CREATE INDEX IF NOT EXISTS idx_hypotheses_confidence ON hypotheses(confidence);
+`;
     db.exec(schema);
 
     // Migration: add arousal column to existing databases

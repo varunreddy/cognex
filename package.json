@@ -2,7 +2,7 @@
   "name": "cognex",
   "version": "1.0.0",
   "description": "Temporal control-state architecture for long-running autonomous agents",
-  "main": "dist/index.js",
+  "main": "dist/src/mcp/server.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/mcp/server.ts",

@@ -6,7 +6,7 @@
 // Local pipeline singleton
 let localExtractor: any = null;
 
-async function getLocalExtractor() {
+export async function getLocalExtractor() {
     if (!localExtractor) {
         console.log("[EMBEDDING] Loading local model (Xenova/all-MiniLM-L6-v2)...");
         // Dynamically import to avoid build issues if package is missing
