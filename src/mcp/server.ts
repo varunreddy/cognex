@@ -8,6 +8,7 @@ import { getDrivePrompt } from "../agent/core/drives.js";
 import { updateFitness } from "../agent/core/fitness.js";
 import { retrieve } from "../agent/core/temporal/retrieval.js";
 import { saveMemory } from "../agent/core/temporal/index.js";
+import { deleteMemory, getMemoryStats, updateMetadata } from "../agent/core/temporal/memoryStore.js";
 
 const server = new Server(
     {
@@ -68,6 +69,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     },
                     required: ["action", "success_score"]
                 },
+            },
+            {
+                name: "add_semantic_memory",
+                description: "Reflect on episodic memories and synthesize them into a higher-level general semantic rule, fact, or insight.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        insight: { type: "string", description: "The general insight, fact, or behavioral rule to save." },
+                        confidence: { type: "number", description: "How confident are you in this rule? 0.0 to 1.0 (defaults to 0.8)" }
+                    },
+                    required: ["insight"]
+                }
+            },
+            {
+                name: "invalidate_memory",
+                description: "If a retrieved memory contains a false belief, hallucination, or outdated information, use this to permanently delete it.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        memory_id: { type: "string", description: "The exact UUID of the memory to delete" }
+                    },
+                    required: ["memory_id"]
+                }
+            },
+            {
+                name: "get_memory_stats",
+                description: "Get statistics about the temporal memory graph, including the number of episodic and semantic memories, and the timestamp of the last reflection.",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                }
             }
         ],
     };
@@ -122,6 +154,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             return {
                 content: [{ type: "text", text: `Updated fitness. New overall fitness: ${fitness.overall_fitness.toFixed(2)}` }],
+            };
+        }
+
+        else if (name === "add_semantic_memory") {
+            const insight = String(args?.insight);
+            const confidence = args?.confidence !== undefined ? Number(args?.confidence) : 0.8;
+
+            const memoryId = await saveMemory({
+                content: insight,
+                type: "semantic",
+                importance: confidence,
+                source: "self_reflection"
+            });
+            return {
+                content: [{ type: "text", text: `Synthesized semantic memory with ID: ${memoryId}` }],
+            };
+        }
+
+        else if (name === "invalidate_memory") {
+            const memory_id = String(args?.memory_id);
+            const success = deleteMemory(memory_id);
+
+            if (success) {
+                return {
+                    content: [{ type: "text", text: `Memory ${memory_id} successfully deleted from long-term storage.` }],
+                };
+            } else {
+                return {
+                    content: [{ type: "text", text: `Failed to delete memory ${memory_id}. It may not exist.` }],
+                    isError: true,
+                };
+            }
+        }
+
+        else if (name === "get_memory_stats") {
+            const stats = getMemoryStats();
+            return {
+                content: [{ type: "text", text: JSON.stringify(stats, null, 2) }],
             };
         }
 

@@ -4,7 +4,7 @@
  */
 
 import { LongTermMemory, ActivatedMemory, MemoryStats } from './memoryTypes';
-import { initializeDatabase, createMemory, createLink, getMemoryStats, vectorSearch, getMemory, updateRetrievalStats } from './memoryStore';
+import { initializeDatabase, createMemory, createLink, getMemoryStats, vectorSearch, getMemory, updateRetrievalStats, getMetadata, setMetadata } from './memoryStore';
 import { retrieve, computeRetrievalWeight } from './retrieval';
 import { generateEmbedding, cosineSimilarity } from './embedding';
 import { estimateArousal } from './arousal';
@@ -21,19 +21,6 @@ import {
     getShortTermStats,
     getTemporalState,
 } from './shortTermContext';
-import {
-    performReflection,
-    shouldReflect,
-    incrementInteractionCount,
-    getInteractionCount,
-    saveInsightsAsMemories,
-} from './reflection';
-import {
-    consolidateMemories,
-    shouldConsolidate,
-    getConsolidationStatus,
-} from './consolidation';
-export { runRecoverySequence } from './recovery';
 
 // Initialize database on module load
 let initialized = false;
@@ -171,43 +158,13 @@ export function getMemoryContext(): string {
 }
 
 /**
- * Trigger self-reflection if conditions are met
- */
-export async function checkAndPerformReflection(): Promise<boolean> {
-    ensureInitialized();
-
-    const interactionCount = getInteractionCount();
-    const { should, trigger } = shouldReflect(interactionCount);
-
-    if (!should) {
-        return false;
-    }
-
-    console.log(`[MEMORY] Self-reflection triggered (${trigger})`);
-
-    const reflection = await performReflection(trigger);
-
-    // Save insights as semantic memories
-    await saveInsightsAsMemories(reflection.insights);
-
-    return true;
-}
-
-/**
- * Manually trigger self-reflection
- */
-export async function triggerReflection(): Promise<void> {
-    ensureInitialized();
-    const reflection = await performReflection('manual');
-    await saveInsightsAsMemories(reflection.insights);
-}
-
-/**
  * Increment interaction counter (call after each agent run)
  */
 export function recordInteraction(): void {
     ensureInitialized();
-    incrementInteractionCount();
+    const currentCount = parseInt(getMetadata('interaction_count') || '0', 10);
+    const newCount = currentCount + 1;
+    setMetadata('interaction_count', newCount.toString());
 }
 
 /**
@@ -290,64 +247,6 @@ async function autoLinkToActiveMemories(memoryId: string, newEmbedding: number[]
 export async function searchMemories(query: string, limit: number = 10): Promise<ActivatedMemory[]> {
     ensureInitialized();
     return await retrieve(query, { topK: limit, useSpreadingActivation: false });
-}
-
-/**
- * Run memory consolidation ("sleep" cycle)
- * Compresses episodic → semantic and prunes stale memories
- */
-export async function runConsolidation() {
-    ensureInitialized();
-    return await consolidateMemories();
-}
-
-/**
- * Check if consolidation is due
- */
-export function needsConsolidation(): boolean {
-    ensureInitialized();
-    return shouldConsolidate();
-}
-
-/**
- * Get consolidation status info
- */
-export function getConsolidationInfo() {
-    ensureInitialized();
-    return getConsolidationStatus();
-}
-
-/**
- * Enhanced reflection check - also checks for consolidation
- */
-export async function checkAndPerformMaintenance(): Promise<{
-    reflected: boolean;
-    consolidated: boolean;
-}> {
-    ensureInitialized();
-
-    let reflected = false;
-    let consolidated = false;
-
-    // Check if reflection is due
-    const interactionCount = getInteractionCount();
-    const reflectionCheck = shouldReflect(interactionCount);
-
-    if (reflectionCheck.should) {
-        const reflection = await performReflection(reflectionCheck.trigger);
-        await saveInsightsAsMemories(reflection.insights);
-        reflected = true;
-        console.log('[TEMPORAL] Self-reflection completed');
-    }
-
-    // Check if consolidation is due
-    if (shouldConsolidate()) {
-        await consolidateMemories();
-        consolidated = true;
-        console.log('[TEMPORAL] Memory consolidation completed');
-    }
-
-    return { reflected, consolidated };
 }
 
 

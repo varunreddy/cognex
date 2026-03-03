@@ -18,8 +18,8 @@ import {
 } from './memoryTypes';
 import { serializeEmbedding, deserializeEmbedding } from './embedding';
 
-import { loadLLMConfig } from '../llmConfig';
-
+// Determine embedding dimension based on config
+// We now strictly use Xenova local embeddings (384 dimensions)
 const MEMORY_DIR = process.env.TEMPORAL_MEMORY_PATH
     ? path.dirname(process.env.TEMPORAL_MEMORY_PATH)
     : path.join(os.homedir(), '.config', 'cognex');
@@ -28,28 +28,8 @@ const DB_PATH = process.env.TEMPORAL_MEMORY_PATH || path.join(MEMORY_DIR, 'tempo
 let db: Database.Database | null = null;
 let vecExtensionLoaded = false;
 
-// Determine embedding dimension based on config
 function getEmbeddingDimension(): number {
-    const config = loadLLMConfig();
-    const model = config?.embedding_model || '';
-
-    // Dimension mapping for known models
-    const DIMENSIONS: Record<string, number> = {
-        'text-embedding-3-small': 1536,
-        'text-embedding-3-large': 3072,
-        'text-embedding-ada-002': 1536,
-        'Xenova/all-MiniLM-L6-v2': 384,
-    };
-
-    if (DIMENSIONS[model]) {
-        return DIMENSIONS[model];
-    }
-
-    // Default to 1536 (OpenAI standard) or 384 (Xenova default)
-    if (config?.embedding_provider === 'local') {
-        return 384;
-    }
-    return 1536;
+    return 384;
 }
 
 /**
