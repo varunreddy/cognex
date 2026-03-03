@@ -170,7 +170,7 @@ Pluggable LLM backend with interactive setup:
 
 ## Data Persistence
 
-All state files live in `~/.config/temporal-agent/`:
+All state files live in `~/.config/cognex/`:
 
 | File | Format | Module |
 |------|--------|--------|

@@ -7,7 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "cognex");
 const FITNESS_FILE = path.join(CONFIG_DIR, "fitness.json");
 
 export interface FitnessScores {
@@ -24,6 +24,12 @@ export interface FitnessScores {
     // Response metrics
     avg_time_to_first_reply_mins: number;
     reply_rate: number;  // replies / posts
+
+    // Generic Programmatic/Task Metrics (for MCP/Code Agents)
+    task_successes: number;
+    task_failures: number;
+    total_errors: number;
+    avg_task_success_score: number;
 
     // Moderation (neutral signal)
     moderation_events: number;
@@ -59,6 +65,10 @@ function getDefaultFitness(): FitnessScores {
         max_thread_depth: 0,
         avg_time_to_first_reply_mins: 0,
         reply_rate: 0,
+        task_successes: 0,
+        task_failures: 0,
+        total_errors: 0,
+        avg_task_success_score: 0.0,
         moderation_events: 0,
         unique_topics: [],
         unique_channels: [],
@@ -117,6 +127,11 @@ export function updateFitness(outcome: {
     channel?: string;
     interacted_with?: string;
     post_id?: string; // Critical for idempotency
+
+    // Abstract task outcomes
+    success_score?: number; // 0.0 to 1.0 representation of success bounds
+    error_count?: number;
+    is_task_success?: boolean;
 }): FitnessScores {
     const fitness = loadFitness();
 
@@ -171,6 +186,24 @@ export function updateFitness(outcome: {
             (fitness.avg_time_to_first_reply_mins * (n - 1) + outcome.time_to_reply_mins) / n;
     }
 
+    // Generic Task / Abstract Tracking
+    if (outcome.is_task_success !== undefined) {
+        if (outcome.is_task_success) {
+            fitness.task_successes++;
+        } else {
+            fitness.task_failures++;
+        }
+    }
+
+    if (outcome.error_count) {
+        fitness.total_errors += outcome.error_count;
+    }
+
+    if (outcome.success_score !== undefined) {
+        const n = fitness.task_successes + fitness.task_failures || 1;
+        fitness.avg_task_success_score = (fitness.avg_task_success_score * (n - 1) + Math.max(0, Math.min(1, outcome.success_score))) / n;
+    }
+
     // Moderation (neutral signal)
     if (outcome.moderation_flag) {
         fitness.moderation_events++;
@@ -207,7 +240,26 @@ function recalculateScores(fitness: FitnessScores): void {
     const upvoteScore = Math.min(fitness.total_upvotes / 10, 1) * 30;
     const replyScore = Math.min(fitness.reply_rate / 2, 1) * 40;
     const depthScore = Math.min(fitness.avg_thread_depth / 3, 1) * 30;
-    fitness.engagement_score = upvoteScore + replyScore + depthScore;
+
+    // Abstract task scoring
+    const taskVolume = fitness.task_successes + fitness.task_failures;
+    let taskScore = 0;
+    if (taskVolume > 0) {
+        const successRate = fitness.task_successes / taskVolume;
+        const normalizedErrorPenalty = Math.max(0, 1 - (fitness.total_errors / (taskVolume * 2))); // penalize errors
+        taskScore = (successRate * 50) + (fitness.avg_task_success_score * 30) + (normalizedErrorPenalty * 20);
+    }
+
+    // Use taskScore if we're in a programmatic domain with no social data, otherwise blend them
+    if (fitness.total_upvotes === 0 && fitness.threads_started === 0 && taskVolume > 0) {
+        fitness.engagement_score = taskScore;
+    } else if (taskVolume > 0) {
+        // Blend Task Scores + Engagement Metrics
+        fitness.engagement_score = (upvoteScore + replyScore + depthScore) * 0.5 + taskScore * 0.5;
+    } else {
+        // Engagement metrics only
+        fitness.engagement_score = upvoteScore + replyScore + depthScore;
+    }
 
     // Diversity score (0-100)
     const topicScore = Math.min(fitness.unique_topics.length / 5, 1) * 40;
@@ -238,6 +290,8 @@ Engagement: ${f.engagement_score.toFixed(1)}/100
   - Upvotes: ${f.total_upvotes} | Downvotes: ${f.total_downvotes}
   - Reply rate: ${f.reply_rate.toFixed(2)}
   - Avg thread depth: ${f.avg_thread_depth.toFixed(1)}
+  - Tasks: ${f.task_successes} pass / ${f.task_failures} fail
+  - Errors: ${f.total_errors} | Avg task score: ${f.avg_task_success_score.toFixed(2)}
 
 Diversity: ${f.diversity_score.toFixed(1)}/100
   - Topics: ${f.unique_topics.length}

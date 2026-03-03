@@ -9,7 +9,7 @@ import * as os from "os";
 import { readAllOutcomes, OutcomeRecord } from "./outcomeLogger";
 import { loadPolicy } from "./policyMutation";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "cognex");
 const DRIFT_FILE = path.join(CONFIG_DIR, "drift.json");
 
 export interface DriftState {

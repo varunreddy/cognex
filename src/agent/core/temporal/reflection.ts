@@ -5,7 +5,7 @@
 
 import { isDisabled } from '../../../eval/evalConfig.js';
 import { ChatOpenAI } from '@langchain/openai';
-import { ReflectionOutput, LongTermMemory } from './memoryTypes';
+import { ReflectionOutput, LongTermMemory } from './memoryTypes.js';
 import {
     getRecentMemoriesFromDB,
     saveReflection,
@@ -15,11 +15,11 @@ import {
     createLink,
     vectorSearch,
     getMemory,
-} from './memoryStore';
-import { loadLLMConfig } from '../llmConfig';
-import { generateEmbedding } from './embedding';
+} from './memoryStore.js';
+import { loadLLMConfig } from '../llmConfig.js';
+import { generateEmbedding } from './embedding.js';
 import { savePolicy } from '../policyStore.js';
-import { runRecoverySequence } from './recovery';
+import { runRecoverySequence } from './recovery.js';
 
 /**
  * Check if self-reflection should be triggered

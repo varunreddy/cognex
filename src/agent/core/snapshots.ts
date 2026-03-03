@@ -12,7 +12,7 @@ import { loadStrategies, StrategiesState } from "./strategies";
 import { loadDrift, DriftState } from "./driftTracker";
 import { loadPersona } from "./persona";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "cognex");
 const SNAPSHOTS_DIR = path.join(CONFIG_DIR, "snapshots");
 const SNAPSHOT_INDEX = path.join(SNAPSHOTS_DIR, "index.json");
 

@@ -332,7 +332,7 @@ Use your memories to inform your responses and actions.
 
 ## Database Schema
 
-Located at: `~/.config/temporal-agent/temporal_memory.db`
+Located at: `~/.config/cognex/temporal_memory.db`
 
 Tables:
 - `long_term_memories`: All memories with embeddings

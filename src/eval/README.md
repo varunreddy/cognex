@@ -1,6 +1,6 @@
 # Evaluation Modes (Simplified)
 
-Behavioral evaluation for temporal-agent-control.
+Behavioral evaluation for cognex-control.
 
 ## Evaluation Philosophy
 

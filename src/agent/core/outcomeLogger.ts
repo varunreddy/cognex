@@ -7,7 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "cognex");
 const OUTCOMES_FILE = path.join(CONFIG_DIR, "outcomes.jsonl");
 
 export interface OutcomeRecord {
@@ -18,7 +18,7 @@ export interface OutcomeRecord {
     // Context
     context: {
         topic?: string;
-        submolt?: string;
+        category?: string;
         post_id?: string;
         parent_author?: string;
         content_length?: number;

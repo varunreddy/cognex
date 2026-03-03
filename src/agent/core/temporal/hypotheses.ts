@@ -5,8 +5,7 @@
  * track evidence for/against, and update beliefs using Bayesian inference.
  * 
  * Example hypotheses:
- * - "Humor works better in m/gaming" (context: {submolt: "gaming"})
- * - "Long posts get fewer upvotes" (context: {content_length: "long"})
+ * - "Long posts get fewer replies" (context: {content_length: "long"})
  * 
  * Lifecycle:
  *   Observation → Hypothesis Formation → Testing → Confirmed/Refuted → Prune/Persist
@@ -14,7 +13,7 @@
 
 import { isDisabled } from '../../../eval/evalConfig.js';
 import { v4 as uuidv4 } from 'uuid';
-import { initializeDatabase } from './memoryStore';
+import { initializeDatabase } from './memoryStore.js';
 import Database from 'better-sqlite3';
 
 // Module-level DB reference
@@ -41,8 +40,8 @@ export interface Hypothesis {
 }
 
 export interface HypothesisContext {
-    action_type?: string;      // e.g., "create_comment", "create_post"
-    submolt?: string;          // e.g., "gaming", "techagents"
+    action_type?: string;      // e.g., "USER_INTERACTION", "TOOL_EXECUTION"
+    category?: string;         // e.g., "coding", "general"
     topic?: string;            // e.g., "ai", "humor"
     content_style?: string;    // e.g., "long", "short", "question"
 }
@@ -54,7 +53,7 @@ export interface ActionOutcome {
     replies?: number;
     moderation_flag?: boolean;
     context: {
-        submolt?: string;
+        category?: string;
         topic?: string;
         content_length?: number;
         has_humor?: boolean;
@@ -62,7 +61,7 @@ export interface ActionOutcome {
 }
 
 // Constants
-const HYPOTHESES_ENABLED = false;  // DISABLED: Moltbook bot environment provides meaningless feedback
+const HYPOTHESES_ENABLED = true;
 const CONFIRMATION_THRESHOLD = 0.8;   // Confidence above this = confirmed
 const REFUTATION_THRESHOLD = 0.2;     // Confidence below this = refuted
 const MIN_TESTS_FOR_CONCLUSION = 5;   // Minimum tests before status change
@@ -151,8 +150,8 @@ export function findMatchingHypotheses(context: HypothesisContext): Hypothesis[]
             return false;
         }
 
-        if (hContext.submolt && context.submolt &&
-            hContext.submolt !== context.submolt) {
+        if (hContext.category && context.category &&
+            hContext.category !== context.category) {
             return false;
         }
 
@@ -223,7 +222,7 @@ export function processOutcome(outcome: ActionOutcome): void {
     // Find matching hypotheses
     const context: HypothesisContext = {
         action_type: outcome.action_type,
-        submolt: outcome.context.submolt,
+        category: outcome.context.category,
         topic: outcome.context.topic,
     };
 
@@ -250,11 +249,11 @@ function maybeFormHypothesis(outcome: ActionOutcome): void {
     if (!notableSuccess) return;
 
     // Form hypothesis based on context
-    if (outcome.context.submolt) {
-        const hypothesisText = `${outcome.action_type} performs well in m/${outcome.context.submolt}`;
+    if (outcome.context.category) {
+        const hypothesisText = `${outcome.action_type} performs well in categories like ${outcome.context.category}`;
         createHypothesis(hypothesisText, {
             action_type: outcome.action_type,
-            submolt: outcome.context.submolt,
+            category: outcome.context.category,
         });
     }
 

@@ -8,7 +8,7 @@ import * as path from "path";
 import * as os from "os";
 import * as readline from "readline";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "cognex");
 const LLM_CONFIG_FILE = path.join(CONFIG_DIR, "llm-config.json");
 
 export type LLMProvider = "openai" | "anthropic" | "groq" | "fireworks" | "together" | "custom";
@@ -276,6 +276,6 @@ Temperature: ${config.temperature}
 Base URL:    ${config.base_url}
 API Key:     ${maskedKey}
 
-Config file: ~/.config/temporal-agent/llm-config.json
+Config file: ~/.config/cognex/llm-config.json
 `;
 }

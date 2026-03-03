@@ -23,10 +23,10 @@ import {
     getMetadata,
     setMetadata,
     decayUnaccessedMemories,
-} from './memoryStore';
-import { LongTermMemory } from './memoryTypes';
-import { generateEmbedding, cosineSimilarity } from './embedding';
-import { invokeLLM, getLLM } from '../llmFactory';
+} from './memoryStore.js';
+import { LongTermMemory } from './memoryTypes.js';
+import { generateEmbedding, cosineSimilarity } from './embedding.js';
+import { invokeLLM, getLLM } from '../llmFactory.js';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 
 // Consolidation settings

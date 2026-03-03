@@ -4,7 +4,7 @@ import {
     MemorySearchResult,
     ActivatedMemory,
     RetrievalParams,
-} from './memoryTypes';
+} from './memoryTypes.js';
 import {
     getMemory,
     getAllMemories,
@@ -13,8 +13,8 @@ import {
     bm25Search,
     vectorSearch,
     isVectorSearchAvailable,
-} from './memoryStore';
-import { generateEmbedding, cosineSimilarity } from './embedding';
+} from './memoryStore.js';
+import { generateEmbedding, cosineSimilarity } from './embedding.js';
 
 // Default retrieval parameters
 const DEFAULT_PARAMS: RetrievalParams = {

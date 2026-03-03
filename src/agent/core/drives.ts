@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const CONFIG_DIR = path.join(os.homedir(), '.config', 'temporal-agent');
+const CONFIG_DIR = path.join(os.homedir(), '.config', 'cognex');
 const DRIVES_FILE = path.join(CONFIG_DIR, 'drives.json');
 
 export interface DriveState {
@@ -84,7 +84,7 @@ export function updateDrives(action: string): DriveState {
 
     // Replenishment Logic
     switch (action) {
-        // Social Actions
+        // --- Legacy Social Actions ---
         case 'create_post':
         case 'create_link_post':
             drives.social = Math.min(100, drives.social + 25);
@@ -101,7 +101,7 @@ export function updateDrives(action: string): DriveState {
             drives.curiosity = Math.min(100, drives.curiosity + 2);
             break;
 
-        // Curiosity Actions
+        // --- Legacy Curiosity Actions ---
         case 'install_skill':
             drives.curiosity = Math.min(100, drives.curiosity + 100); // Fully satisfied!
             drives.competence = Math.min(100, drives.competence + 10); // Moderate boost (was +20)
@@ -114,13 +114,39 @@ export function updateDrives(action: string): DriveState {
             drives.curiosity = Math.min(100, drives.curiosity + 10);
             break;
 
-        // Competence Actions
+        // --- Legacy Competence Actions ---
         case 'run_skill_command':
             drives.competence = Math.min(100, drives.competence + 15); // Meaningful but not maxing (was +30)
             drives.curiosity = Math.min(100, drives.curiosity + 10); // Using tools is interesting
             break;
         case 'save_memory':
             drives.competence = Math.min(100, drives.competence + 10); // Reflection feels good
+            break;
+
+        // --- Abstract/Generic LLM & MCP Agent Actions ---
+        case 'USER_INTERACTION':
+        case 'HUMAN_FEEDBACK':
+        case 'SLACK_MESSAGE':
+        case 'CODE_REVIEW_COMMENT':
+            drives.social = Math.min(100, drives.social + 20);
+            break;
+        case 'TOOL_DISCOVERY':
+        case 'READ_FILE':
+        case 'DOCUMENTATION_SEARCH':
+        case 'EXPLORE_CODEBASE':
+            drives.curiosity = Math.min(100, drives.curiosity + 30);
+            break;
+        case 'TOOL_EXECUTION':
+        case 'WRITE_CODE':
+        case 'RUN_TESTS':
+        case 'FIX_BUG':
+        case 'DEPLOY':
+            drives.competence = Math.min(100, drives.competence + 25);
+            drives.curiosity = Math.min(100, drives.curiosity + 5); // executing tools has minor curiosity
+            break;
+        case 'SYSTEM_REFLECTION':
+        case 'MEMORY_CONSOLIDATION':
+            drives.competence = Math.min(100, drives.competence + 10);
             break;
     }
 

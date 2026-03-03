@@ -51,7 +51,7 @@ const DEFAULT_CONFIG: EvalConfig = {
     disableConsolidation: false,
     disableReflection: false,
     disableDrives: false,
-    disableHypotheses: true,   // disabled: Moltbook bot environment provides no meaningful signal
+    disableHypotheses: true,
     disableStrategies: false,
     disablePolicyMutation: false,
     disableStagnationDetection: false,

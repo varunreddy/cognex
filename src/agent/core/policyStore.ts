@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const CONFIG_DIR = path.join(os.homedir(), '.config', 'temporal-agent');
+const CONFIG_DIR = path.join(os.homedir(), '.config', 'cognex');
 const POLICY_FILE = path.join(CONFIG_DIR, 'policies.json');
 
 export interface Policy {

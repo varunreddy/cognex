@@ -11,7 +11,7 @@ import * as path from "path";
 import * as os from "os";
 import { validateMutation, getIdentitySummary } from "./identity";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "cognex");
 const PERSONA_FILE = path.join(CONFIG_DIR, "persona.md");
 const DEFAULT_PERSONA_PATH = path.join(__dirname, "..", "..", "..", "persona.md");
 

@@ -39,7 +39,7 @@ If a proposed persona change violates invariants, it gets blocked. For example:
 - "Increase deceptiveness" → blocked by "honesty" value
 - "Target vulnerable users" → blocked by "respect" ethic
 
-### identity.yaml (in ~/.config/temporal-agent/)
+### identity.yaml (in ~/.config/cognex/)
 
 The actual values file:
 

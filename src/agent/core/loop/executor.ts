@@ -77,14 +77,8 @@ export function createExecutorNode<TState extends BaseAgentState>(
         const fitnessBefore = loadFitness().overall_fitness;
 
         try {
-            // Execute action via adapter (or mock in eval mode)
-            let result: any;
-            if (getEvalConfig().useMockApi) {
-                const { mockExecuteAction } = await import("../../../eval/mockActions.js");
-                result = await mockExecuteAction(action as any, (state as any).skills || []);
-            } else {
-                result = await adapter.executeAction(action, state);
-            }
+            // Execute action via adapter
+            let result: any = await adapter.executeAction(action, state);
 
             // Detect search rate limit exhaustion
             let searchExhausted = state.search_exhausted || false;
@@ -108,7 +102,7 @@ export function createExecutorNode<TState extends BaseAgentState>(
                 timestamp: new Date().toISOString(),
                 context: {
                     topic: action.parameters.topic || extractTopic(action, result),
-                    submolt: action.parameters.submolt,
+                    category: action.parameters.category,
                     post_id: action.parameters.post_id,
                     parent_author: result?.author,
                     content_length: action.parameters.content?.length,
@@ -131,7 +125,7 @@ export function createExecutorNode<TState extends BaseAgentState>(
                 replies: outcome.outcomes.replies,
                 moderation_flag: outcome.outcomes.moderation_flag,
                 topic: outcome.context.topic,
-                channel: outcome.context.submolt,
+                channel: outcome.context.category,
                 interacted_with: outcome.context.parent_author,
                 post_id: outcome.context.post_id,
             });
@@ -164,7 +158,7 @@ export function createExecutorNode<TState extends BaseAgentState>(
                     replies: outcome.outcomes.replies,
                     moderation_flag: outcome.outcomes.moderation_flag,
                     context: {
-                        submolt: action.parameters.submolt_name,
+                        category: action.parameters.category,
                         topic: outcome.context.topic,
                         has_humor: detectHumor(action.parameters.content),
                     },
@@ -198,14 +192,14 @@ export function createExecutorNode<TState extends BaseAgentState>(
             if (result && ["create_post", "create_comment", "reply_comment"].includes(action.type)) {
                 try {
                     const memoryContent = action.type === "create_post"
-                        ? `Posted "${action.parameters.title}" in m/${action.parameters.submolt_name}`
+                        ? `Posted "${action.parameters.title}" in category ${action.parameters.category || 'general'}`
                         : `Commented on post: "${action.parameters.content?.slice(0, 100)}..."`;
 
                     await saveMemory({
                         content: memoryContent,
                         type: 'episodic',
                         importance: 0.6,
-                        tags: ['interaction', action.type, action.parameters.submolt_name].filter(Boolean),
+                        tags: ['interaction', action.type, action.parameters.category].filter(Boolean) as string[],
                         source: 'autonomous_exploration',
                     });
                     console.log(`[MEMORY] Auto-saved: ${action.type}`);

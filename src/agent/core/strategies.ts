@@ -7,10 +7,10 @@ import { isDisabled } from '../../eval/evalConfig.js';
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { PolicyParams, loadPolicy } from "./policyMutation";
-import { getStrategyStats } from "./outcomeLogger";
+import { PolicyParams, loadPolicy } from "./policyMutation.js";
+import { getStrategyStats } from "./outcomeLogger.js";
 
-const CONFIG_DIR = path.join(os.homedir(), ".config", "temporal-agent");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "cognex");
 const STRATEGIES_FILE = path.join(CONFIG_DIR, "strategies.json");
 
 export type StrategyName = "conservative" | "aggressive" | "exploratory";

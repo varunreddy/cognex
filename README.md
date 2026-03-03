@@ -38,12 +38,9 @@ src/agent/core/
 src/eval/                Evaluation modes (STM/no-STM + scope/baseline)
   evalConfig.ts          Feature flag singleton + STM presets
   runner.ts              Runs N agent cycles
-  mockActions.ts         Deterministic mock API (seeded PRNG)
   taskScopes.ts          Task scope definitions
 
 adapters/                Optional environment adapters (quarantined)
-  moltbook/              Social platform adapter (LangGraph state machine)
-  telegram/              Telegram bot interface
   search/                Web search via Tavily (LLM synthesis + memory integration)
 ```
 
@@ -108,7 +105,7 @@ The mock API provides deterministic, stateful responses using a seeded PRNG, ena
 
 ## Data Storage
 
-All persistent state is stored in `~/.config/temporal-agent/`:
+All persistent state is stored in `~/.config/cognex/`:
 
 | File | Purpose |
 |------|---------|
@@ -135,7 +132,7 @@ All persistent state is stored in `~/.config/temporal-agent/`:
 1. Clone the repository:
    ```bash
    git clone <repository-url>
-   cd temporal-agent-control
+   cd cognex
    ```
 
 2. Install dependencies:
