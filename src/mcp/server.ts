@@ -9,7 +9,6 @@ import { updateFitness } from "../agent/core/fitness.js";
 import { retrieve } from "../agent/core/temporal/retrieval.js";
 import { saveMemory } from "../agent/core/temporal/index.js";
 import { deleteMemory, getMemoryStats } from "../agent/core/temporal/memoryStore.js";
-import { getLocalExtractor } from "../agent/core/temporal/embedding.js";
 
 // Prevent MCP stdout contamination by routing all logs to stderr
 console.log = console.error;
@@ -215,33 +214,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
+    process.stdin.resume();
     console.error("Temporal Agent MCP Server running on stdio");
+    const keepAlive = setInterval(() => undefined, 60_000);
 
-    // Preload embedding model to prevent timeout on first tool use
-    try {
-        console.error("Preloading Xenova embedding model...");
-        await getLocalExtractor();
-        console.error("Embedding model ready.");
-    } catch (e: any) {
-        console.error("Warning: Could not preload embedding model:", e.message);
-    }
+    const shutdown = async () => {
+        clearInterval(keepAlive);
+        process.off("SIGINT", shutdown);
+        process.off("SIGTERM", shutdown);
+        try {
+            await server.close();
+        } catch {
+            // Ignore close errors during shutdown.
+        }
+    };
 
-    // Keepalive to prevent the event loop from prematurely exiting
-    setInterval(() => {
-        // Keep process alive
-    }, 60000);
+    process.on("SIGINT", () => {
+        void shutdown();
+    });
+
+    process.on("SIGTERM", () => {
+        void shutdown();
+    });
 }
-
-// Clean shutdown hooks
-process.on('SIGINT', () => {
-    server.close();
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    server.close();
-    process.exit(0);
-});
 
 main().catch((error) => {
     console.error("Fatal error running server:", error);
