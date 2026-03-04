@@ -7,10 +7,6 @@ import {
 import { retrieve, setGlobalRetrievalParams } from "../agent/core/temporal/retrieval.js";
 import { saveMemory } from "../agent/core/temporal/index.js";
 import { deleteMemory, getMemoryStats, getMemory, updateMemoryMetadata } from "../agent/core/temporal/memoryStore.js";
-import { prewarmModel } from "../agent/core/temporal/embedding.js";
-
-// Pre-warm local embedding model in background
-prewarmModel().catch(err => console.error("[EMBEDDING] Prewarm failed:", err));
 
 // Prevent MCP stdout contamination by routing all logs to stderr
 console.log = console.error;
@@ -288,6 +284,18 @@ async function main() {
     await server.connect(transport);
     process.stdin.resume();
     console.error("Temporal Agent MCP Server running on stdio");
+
+    if (process.env.COGNEX_PREWARM === "1") {
+        setTimeout(async () => {
+            try {
+                const { prewarmModel } = await import("../agent/core/temporal/embedding.js");
+                await prewarmModel();
+            } catch (err) {
+                console.error("[EMBEDDING] Optional prewarm failed:", err);
+            }
+        }, 0);
+    }
+
     const keepAlive = setInterval(() => undefined, 60_000);
 
     const shutdown = async () => {

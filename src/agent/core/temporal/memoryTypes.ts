@@ -6,7 +6,7 @@ export interface LongTermMemory {
     id: string;
     created_at: string; // ISO 8601 timestamp
     content: string;
-    embedding: number[]; // Vector embedding (e.g., 1536 dimensions)
+    embedding: number[]; // Vector embedding (384 dimensions, all-MiniLM-L6-v2)
 
     // Memory classification
     type: 'episodic' | 'semantic' | 'procedural';
@@ -77,6 +77,7 @@ export interface ActivatedMemory {
     memory: LongTermMemory;
     activation: number; // How strongly activated (0-1)
     depth: number; // Hops from primary query
+    score?: number; // Final relevance score from RRF + reranking (only on seed memories)
 }
 
 export interface MemorySearchResult {

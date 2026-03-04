@@ -18,8 +18,7 @@
         "sourceMap": true
     },
     "include": [
-        "src/**/*",
-        "adapters/**/*"
+        "src/**/*"
     ],
     "exclude": [
         "node_modules",

@@ -19,19 +19,6 @@ export interface EvalConfig {
     disableShortTermContext: boolean;
     disableArousal: boolean;
     disableSpreadingActivation: boolean;
-    disableConsolidation: boolean;
-    disableReflection: boolean;
-
-    // motivation stuff
-    disableDrives: boolean;
-    disableHypotheses: boolean;
-
-    // evolutionary behavior
-    disableStrategies: boolean;
-    disablePolicyMutation: boolean;
-
-    // prevents the agent from detecting when it's stuck
-    disableStagnationDetection: boolean;
 
     // if you want to tweak how many things fit in short-term memory
     stmSize?: number;
@@ -48,13 +35,6 @@ const DEFAULT_CONFIG: EvalConfig = {
     disableShortTermContext: false,
     disableArousal: false,
     disableSpreadingActivation: false,
-    disableConsolidation: false,
-    disableReflection: false,
-    disableDrives: false,
-    disableHypotheses: true,
-    disableStrategies: false,
-    disablePolicyMutation: false,
-    disableStagnationDetection: false,
     useMockApi: false,
 };
 

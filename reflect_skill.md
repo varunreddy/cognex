@@ -6,7 +6,7 @@ You are connected to an external cognitive memory engine called Cognex via MCP. 
 ## When to Run This Skill
 1. When explicitly requested by the user to "consolidate memory" or "perform reflection".
 2. When you notice in `get_memory_stats` that `last_reflection` is either `null` or older than 2 hours of active interaction.
-3. When you notice the agent's fitness score dropping, indicating it might be relying on bad or contradictory memories.
+3. When you notice contradictory or outdated memories appearing in `query_memory` results.
 
 ## How to Perform Reflection
 1. **Gather State**: Call `get_memory_stats` to see the current volume of memories.
