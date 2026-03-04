@@ -26,6 +26,17 @@ const DEFAULT_PARAMS: RetrievalParams = {
     spread_depth: 2, // Max hops in graph
 };
 
+let globalRetrievalParams: Partial<RetrievalParams> = {};
+
+export function setGlobalRetrievalParams(params: Partial<RetrievalParams>) {
+    globalRetrievalParams = { ...globalRetrievalParams, ...params };
+    return { ...DEFAULT_PARAMS, ...globalRetrievalParams };
+}
+
+export function getGlobalRetrievalParams() {
+    return { ...DEFAULT_PARAMS, ...globalRetrievalParams };
+}
+
 // RRF constant (standard value from literature)
 const RRF_K = 60;
 const STOP_WORDS = new Set([
@@ -98,7 +109,7 @@ export function computeRetrievalWeight(
     memory: LongTermMemory,
     params: Partial<RetrievalParams> = {}
 ): number {
-    const { alpha, beta } = { ...DEFAULT_PARAMS, ...params };
+    const { alpha, beta } = { ...getGlobalRetrievalParams(), ...params };
 
     // Frequency component (grows with each access)
     // Use logarithmic scaling to prevent rich-get-richer saturation
@@ -109,9 +120,9 @@ export function computeRetrievalWeight(
     // Recency component (penalizes old retrievals)
     const currentTime = new Date();
     const lastAccessed = memory.last_accessed ? new Date(memory.last_accessed) : new Date(memory.created_at);
-    const timeSinceLastMs = currentTime.getTime() - lastAccessed.getTime();
+    const timeSinceLastMs = Math.max(0, currentTime.getTime() - lastAccessed.getTime());
     const hoursSince = timeSinceLastMs / (1000 * 60 * 60);
-    const recencyPenalty = hoursSince;
+    const recencyPenalty = Math.max(0, Math.min(hoursSince, 120));
 
     // Arousal component: emotionally intense memories are more retrievable
     // Scaled by 0.3 so a fully aroused memory adds ~0.3 to the logistic input
@@ -130,7 +141,7 @@ export function computeRetrievalWeight(
  * Calculate TTL for short-term memory based on retrieval weight
  */
 export function calculateTTL(retrievalWeight: number, params: Partial<RetrievalParams> = {}): number {
-    const { min_ttl, max_ttl } = { ...DEFAULT_PARAMS, ...params };
+    const { min_ttl, max_ttl } = { ...getGlobalRetrievalParams(), ...params };
     return Math.round(min_ttl + retrievalWeight * (max_ttl - min_ttl));
 }
 
@@ -282,7 +293,7 @@ export function spreadingActivation(
     seedMemories: MemorySearchResult[],
     params: Partial<RetrievalParams> = {}
 ): Map<string, ActivatedMemory> {
-    const { link_threshold, spread_depth } = { ...DEFAULT_PARAMS, ...params };
+    const { link_threshold, spread_depth } = { ...getGlobalRetrievalParams(), ...params };
 
     const activatedMemories = new Map<string, ActivatedMemory>();
 

@@ -262,7 +262,7 @@ export function getContextForPrompt(): string {
             hour: '2-digit',
             minute: '2-digit',
             hour12: true,
-            timeZone: 'Asia/Kolkata',
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
         const strengthBar = '\u2588'.repeat(Math.round(strength * 5)); // Visual strength indicator
         const typeLabel = `[${memory.type}]`;
@@ -280,38 +280,38 @@ export function getTemporalState(): string {
     const now = new Date();
 
     // Format current time in IST
-    const timeString = now.toLocaleTimeString('en-IN', {
+    const timeString = now.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
-        timeZone: 'Asia/Kolkata',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
-    const dateString = now.toLocaleDateString('en-IN', {
+    const dateString = now.toLocaleDateString('en-US', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
         day: 'numeric',
-        timeZone: 'Asia/Kolkata',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
 
-    // Determine time of day in IST
-    const istHour = parseInt(now.toLocaleTimeString('en-IN', {
+    // Determine time of day
+    const localHour = parseInt(now.toLocaleTimeString('en-US', {
         hour: '2-digit',
         hour12: false,
-        timeZone: 'Asia/Kolkata',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }));
     let timeOfDay: string;
-    if (istHour >= 5 && istHour < 12) {
+    if (localHour >= 5 && localHour < 12) {
         timeOfDay = 'morning';
-    } else if (istHour >= 12 && istHour < 17) {
+    } else if (localHour >= 12 && localHour < 17) {
         timeOfDay = 'afternoon';
-    } else if (istHour >= 17 && istHour < 21) {
+    } else if (localHour >= 17 && localHour < 21) {
         timeOfDay = 'evening';
     } else {
         timeOfDay = 'night';
     }
 
-    const timezone = 'Asia/Kolkata (IST)';
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     // Get last reflection time from metadata
     const { getMetadata } = require('./memoryStore');

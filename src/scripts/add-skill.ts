@@ -1,7 +1,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
 const repoUrl = args[0];
@@ -31,7 +31,7 @@ if (fs.existsSync(targetDir)) {
 } else {
     console.log(`Cloning ${repoUrl} to ${targetDir}...`);
     try {
-        execSync(`git clone ${repoUrl} ${targetDir}`, { stdio: 'inherit' });
+        execFileSync('git', ['clone', repoUrl, targetDir], { stdio: 'inherit' });
     } catch (e) {
         console.error('Failed to clone repository:', e);
         process.exit(1);

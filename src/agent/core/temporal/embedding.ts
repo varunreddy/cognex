@@ -6,12 +6,27 @@
 // Local pipeline singleton
 let localExtractor: any = null;
 
+export async function prewarmModel(): Promise<void> {
+    await getLocalExtractor();
+}
+
 export async function getLocalExtractor() {
     if (!localExtractor) {
         console.log("[EMBEDDING] Loading local model (Xenova/all-MiniLM-L6-v2)...");
         // Dynamically import to avoid build issues if package is missing
         const { pipeline } = await import('@xenova/transformers');
-        localExtractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+        localExtractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+            progress_callback: (progressInfo: any) => {
+                if (progressInfo.status === 'downloading' && progressInfo.name && progressInfo.progress !== undefined) {
+                    const prog = Math.round(progressInfo.progress);
+                    process.stderr.write(`\\r[EMBEDDING] Downloading ${progressInfo.name}: ${prog}%    `);
+                } else if (progressInfo.status === 'done' && progressInfo.name) {
+                    process.stderr.write(`\\n[EMBEDDING] Download complete: ${progressInfo.name}\\n`);
+                } else if (progressInfo.status === 'ready') {
+                    console.log(`[EMBEDDING] Model ready: ${progressInfo.model}`);
+                }
+            }
+        });
     }
     return localExtractor;
 }

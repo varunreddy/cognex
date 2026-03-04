@@ -4,16 +4,20 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { getDrivePrompt } from "../agent/core/drives.js";
-import { updateFitness } from "../agent/core/fitness.js";
-import { retrieve } from "../agent/core/temporal/retrieval.js";
+import { retrieve, setGlobalRetrievalParams } from "../agent/core/temporal/retrieval.js";
 import { saveMemory } from "../agent/core/temporal/index.js";
-import { deleteMemory, getMemoryStats } from "../agent/core/temporal/memoryStore.js";
+import { deleteMemory, getMemoryStats, getMemory, updateMemoryMetadata } from "../agent/core/temporal/memoryStore.js";
+import { prewarmModel } from "../agent/core/temporal/embedding.js";
+
+// Pre-warm local embedding model in background
+prewarmModel().catch(err => console.error("[EMBEDDING] Prewarm failed:", err));
 
 // Prevent MCP stdout contamination by routing all logs to stderr
 console.log = console.error;
 console.info = console.error;
 console.warn = console.error;
+// Global server state for memory querying
+let serverRetrievalTopK = 5;
 
 const server = new Server(
     {
@@ -30,14 +34,6 @@ const server = new Server(
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
-            {
-                name: "get_drive_state",
-                description: "Get the current motivational drives of the agent (e.g. connection, novelty, achievement). Useful to decide what to do next autonomously.",
-                inputSchema: {
-                    type: "object",
-                    properties: {},
-                },
-            },
             {
                 name: "query_memory",
                 description: "Query the agent's long-term episodic and semantic memory.",
@@ -59,20 +55,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         content: { type: "string", description: "The memory to store" }
                     },
                     required: ["content"]
-                },
-            },
-            {
-                name: "report_task_outcome",
-                description: "Report back the outcome of an action taken (e.g. using a skill, running code) to update the agent's internal fitness score.",
-                inputSchema: {
-                    type: "object",
-                    properties: {
-                        action: { type: "string", description: "The action taken (e.g., TOOL_EXECUTION, WRITE_CODE, READ_FILE)" },
-                        success_score: { type: "number", description: "1.0 for success, 0.0 for failure, or anywhere in between" },
-                        error_count: { type: "number", description: "Number of errors encountered (if any, default 0)" },
-                        is_task_success: { type: "boolean", description: "Whether the overall task was a success" }
-                    },
-                    required: ["action", "success_score"]
                 },
             },
             {
@@ -105,6 +87,46 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     type: "object",
                     properties: {},
                 }
+            },
+            {
+                name: "create_hypothesis",
+                description: "Create a new strategic hypothesis to track behavioral effectiveness over time.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        hypothesis: { type: "string", description: "The strategic hypothesis to test (e.g. 'Using findBy queries works better than getBy for async components')" },
+                        confidence: { type: "number", description: "Initial confidence in this hypothesis (0.0 to 1.0) (defaults to 0.5)" }
+                    },
+                    required: ["hypothesis"]
+                }
+            },
+            {
+                name: "update_hypothesis",
+                description: "Update an existing hypothesis to increment its evidence count or change its status/confidence.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        memory_id: { type: "string", description: "The UUID of the semantic hypothesis memory" },
+                        confidence: { type: "number", description: "The updated confidence score (0.0 to 1.0)" },
+                        evidence_increment: { type: "number", description: "Amount of new evidence collected (defaults to 1)" },
+                        status: { type: "string", description: "Update status: 'active', 'confirmed', 'refuted', or 'stale'" }
+                    },
+                    required: ["memory_id"]
+                }
+            },
+            {
+                name: "tune_retrieval_params",
+                description: "Tune the parameters of the memory retrieval system. Only supply the parameters you wish to change.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        topK: { type: "number", description: "Maximum number of memory items to return" },
+                        spread_depth: { type: "number", description: "Maximum hops in spreading activation graph" },
+                        link_threshold: { type: "number", description: "Minimum connection weight to traverse edges" },
+                        alpha: { type: "number", description: "Frequency weight (promotes often-accessed memories)" },
+                        beta: { type: "number", description: "Recency decay rate (penalizes older memories)" },
+                    }
+                }
             }
         ],
     };
@@ -114,16 +136,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
     try {
-        if (name === "get_drive_state") {
-            const state = getDrivePrompt();
-            return {
-                content: [{ type: "text", text: state }],
-            };
-        }
-
-        else if (name === "query_memory") {
+        if (name === "query_memory") {
             const query = String(args?.query);
-            const limit = Number(args?.limit || 5);
+            const limit = args?.limit !== undefined ? Number(args.limit) : serverRetrievalTopK;
 
             const results = await retrieve(query, { topK: limit, useHybrid: true });
             return {
@@ -141,24 +156,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             });
             return {
                 content: [{ type: "text", text: `Stored memory with ID: ${memoryId}` }],
-            };
-        }
-
-        else if (name === "report_task_outcome") {
-            const action = String(args?.action);
-            const success_score = Number(args?.success_score);
-            const error_count = args?.error_count !== undefined ? Number(args?.error_count) : 0;
-            const is_task_success = args?.is_task_success !== undefined ? Boolean(args?.is_task_success) : undefined;
-
-            const fitness = updateFitness({
-                action,
-                success_score,
-                error_count,
-                is_task_success
-            });
-
-            return {
-                content: [{ type: "text", text: `Updated fitness. New overall fitness: ${fitness.overall_fitness.toFixed(2)}` }],
             };
         }
 
@@ -193,6 +190,81 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
         }
 
+        else if (name === "create_hypothesis") {
+            const hypothesis = String(args?.hypothesis);
+            const confidence = args?.confidence !== undefined ? Number(args?.confidence) : 0.5;
+
+            const memoryId = await saveMemory({
+                content: hypothesis,
+                type: "semantic",
+                importance: 0.9,
+                source: "self_reflection"
+            });
+
+            // Set initial hypothesis metadata
+            updateMemoryMetadata(memoryId, {
+                memory_type: 'hypothesis',
+                evidence_count: 1,
+                last_tested: new Date().toISOString(),
+                confidence: confidence,
+                status: 'active'
+            });
+
+            return {
+                content: [{ type: "text", text: `Created hypothesis memory with ID: ${memoryId}` }],
+            };
+        }
+
+        else if (name === "update_hypothesis") {
+            const memoryId = String(args?.memory_id);
+            const memory = getMemory(memoryId);
+
+            if (!memory) {
+                return {
+                    content: [{ type: "text", text: `Memory ${memoryId} not found.` }],
+                    isError: true,
+                };
+            }
+
+            const currentEvidence = memory.metadata?.evidence_count || 0;
+            const increment = args?.evidence_increment !== undefined ? Number(args?.evidence_increment) : 1;
+
+            const updates: any = {
+                last_tested: new Date().toISOString(),
+                evidence_count: currentEvidence + increment,
+            };
+
+            if (args?.confidence !== undefined) updates.confidence = Number(args.confidence);
+            if (args?.status !== undefined) updates.status = String(args.status);
+
+            updateMemoryMetadata(memoryId, updates);
+
+            return {
+                content: [{ type: "text", text: `Updated hypothesis ${memoryId} metadata: ${JSON.stringify(updates)}` }],
+            };
+        }
+
+        else if (name === "tune_retrieval_params") {
+            const topK = args?.topK !== undefined ? Number(args.topK) : undefined;
+            const spreadDepth = args?.spread_depth !== undefined ? Number(args.spread_depth) : undefined;
+            const linkThreshold = args?.link_threshold !== undefined ? Number(args.link_threshold) : undefined;
+            const alpha = args?.alpha !== undefined ? Number(args.alpha) : undefined;
+            const beta = args?.beta !== undefined ? Number(args.beta) : undefined;
+
+            if (topK !== undefined) serverRetrievalTopK = topK;
+
+            const update: any = {};
+            if (spreadDepth !== undefined) update.spread_depth = spreadDepth;
+            if (linkThreshold !== undefined) update.link_threshold = linkThreshold;
+            if (alpha !== undefined) update.alpha = alpha;
+            if (beta !== undefined) update.beta = beta;
+
+            const newParams = setGlobalRetrievalParams(update);
+
+            return {
+                content: [{ type: "text", text: `Updated retrieval parameters:\ntopK: ${serverRetrievalTopK}\n${JSON.stringify(newParams, null, 2)}` }],
+            };
+        }
         else if (name === "get_memory_stats") {
             const stats = getMemoryStats();
             return {

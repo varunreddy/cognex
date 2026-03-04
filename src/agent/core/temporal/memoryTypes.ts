@@ -22,11 +22,19 @@ export interface LongTermMemory {
 
     // Context and metadata
     tags: string[]; // e.g., ["self_reflection", "goal_update"]
-    metadata?: Record<string, any>; // Generic metadata (provenance, failure attribution, etc.)
+    metadata?: Record<string, any> | HypothesisMetadata; // Generic metadata (provenance, failure attribution, etc.)
     source: 'user_interaction' | 'autonomous_exploration' | 'self_reflection' | 'consolidation' | 'search';
 
     // Decay parameters
     base_decay_rate: number; // Default: 0.05
+}
+
+export interface HypothesisMetadata {
+    memory_type: 'hypothesis';
+    evidence_count: number;
+    last_tested: string;   // ISO 8601 timestamp
+    confidence: number;    // 0.0 - 1.0
+    status: 'active' | 'confirmed' | 'refuted' | 'stale';
 }
 
 export interface MemoryLink {

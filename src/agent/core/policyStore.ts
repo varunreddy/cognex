@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { v4 as uuidv4 } from 'uuid';
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'cognex');
 const POLICY_FILE = path.join(CONFIG_DIR, 'policies.json');
@@ -62,7 +63,7 @@ export function savePolicy(policy: Omit<Policy, 'id' | 'created_at' | 'active'>)
         : undefined;
 
     const newPolicy: Policy = {
-        id: Math.random().toString(36).substring(7),
+        id: uuidv4(),
         created_at: new Date().toISOString(),
         active: true,
         expires_at: expiresAt,

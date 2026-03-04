@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS long_term_memories (
     -- Tags and context
     tags TEXT NOT NULL,  -- JSON array: ["tag1", "tag2"]
     metadata TEXT, -- JSON object: { "provenance": "...", "failure_attribution": "..." }
-    source TEXT NOT NULL CHECK(source IN ('user_interaction', 'autonomous_exploration', 'self_reflection', 'consolidation')),
+    source TEXT NOT NULL CHECK(source IN ('user_interaction', 'autonomous_exploration', 'self_reflection', 'consolidation', 'search')),
 
     -- Decay parameters
     base_decay_rate REAL DEFAULT 0.05

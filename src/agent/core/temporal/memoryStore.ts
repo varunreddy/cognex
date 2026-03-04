@@ -20,10 +20,14 @@ import { serializeEmbedding, deserializeEmbedding } from './embedding';
 
 // Determine embedding dimension based on config
 // We now strictly use Xenova local embeddings (384 dimensions)
-const MEMORY_DIR = process.env.TEMPORAL_MEMORY_PATH
-    ? path.dirname(process.env.TEMPORAL_MEMORY_PATH)
-    : path.join(os.homedir(), '.config', 'cognex');
-const DB_PATH = process.env.TEMPORAL_MEMORY_PATH || path.join(MEMORY_DIR, 'temporal_memory.db');
+function getMemoryDir() {
+    return process.env.TEMPORAL_MEMORY_PATH
+        ? path.dirname(process.env.TEMPORAL_MEMORY_PATH)
+        : path.join(os.homedir(), '.config', 'cognex');
+}
+function getDbPath() {
+    return process.env.TEMPORAL_MEMORY_PATH || path.join(getMemoryDir(), 'temporal_memory.db');
+}
 
 let db: Database.Database | null = null;
 let vecExtensionLoaded = false;
@@ -38,12 +42,15 @@ function getEmbeddingDimension(): number {
 export function initializeDatabase(): Database.Database {
     if (db) return db;
 
+    const memoryDir = getMemoryDir();
+    const dbPath = getDbPath();
+
     // Ensure directory exists
-    if (!fs.existsSync(MEMORY_DIR)) {
-        fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    if (!fs.existsSync(memoryDir)) {
+        fs.mkdirSync(memoryDir, { recursive: true });
     }
 
-    db = new Database(DB_PATH);
+    db = new Database(dbPath);
     db.pragma('journal_mode = WAL'); // Better concurrency
 
     // Load sqlite-vec extension for vector similarity search
@@ -57,7 +64,7 @@ export function initializeDatabase(): Database.Database {
         vecExtensionLoaded = false;
     }
 
-    db.exec(`CREATE TABLE IF NOT EXISTS long_term_memories (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, content TEXT NOT NULL, embedding BLOB NOT NULL, type TEXT NOT NULL CHECK(type IN ('episodic', 'semantic', 'procedural')), importance REAL NOT NULL CHECK(importance >= 0 AND importance <= 1), arousal REAL NOT NULL DEFAULT 0.0 CHECK(arousal >= 0 AND arousal <= 1), access_count INTEGER DEFAULT 0, last_accessed TEXT, tags TEXT NOT NULL, metadata TEXT, source TEXT NOT NULL CHECK(source IN ('user_interaction', 'autonomous_exploration', 'self_reflection', 'consolidation')), base_decay_rate REAL DEFAULT 0.05);`);
+    db.exec(`CREATE TABLE IF NOT EXISTS long_term_memories (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, content TEXT NOT NULL, embedding BLOB NOT NULL, type TEXT NOT NULL CHECK(type IN ('episodic', 'semantic', 'procedural')), importance REAL NOT NULL CHECK(importance >= 0 AND importance <= 1), arousal REAL NOT NULL DEFAULT 0.0 CHECK(arousal >= 0 AND arousal <= 1), access_count INTEGER DEFAULT 0, last_accessed TEXT, tags TEXT NOT NULL, metadata TEXT, source TEXT NOT NULL CHECK(source IN ('user_interaction', 'autonomous_exploration', 'self_reflection', 'consolidation', 'search')), base_decay_rate REAL DEFAULT 0.05);`);
     db.exec(`CREATE TABLE IF NOT EXISTS memory_links (id TEXT PRIMARY KEY, from_memory_id TEXT NOT NULL, to_memory_id TEXT NOT NULL, weight REAL NOT NULL CHECK(weight >= 0 AND weight <= 1), link_type TEXT NOT NULL CHECK(link_type IN ('causal', 'temporal', 'semantic', 'correction', 'elaboration')), created_at TEXT NOT NULL, last_updated TEXT NOT NULL, co_retrieval_count INTEGER DEFAULT 0, initial_similarity REAL DEFAULT 0.0, FOREIGN KEY (from_memory_id) REFERENCES long_term_memories(id) ON DELETE CASCADE, FOREIGN KEY (to_memory_id) REFERENCES long_term_memories(id) ON DELETE CASCADE, UNIQUE(from_memory_id, to_memory_id));`);
     db.exec(`CREATE TABLE IF NOT EXISTS short_term_context (memory_id TEXT PRIMARY KEY, loaded_at TEXT NOT NULL, ttl_seconds INTEGER NOT NULL, expires_at TEXT NOT NULL, retrieval_weight REAL NOT NULL, FOREIGN KEY (memory_id) REFERENCES long_term_memories(id) ON DELETE CASCADE);`);
     db.exec(`CREATE TABLE IF NOT EXISTS reflections (id TEXT PRIMARY KEY, reflected_at TEXT NOT NULL, trigger TEXT NOT NULL CHECK(trigger IN ('scheduled', 'error_detected', 'goal_achieved', 'manual')), insights TEXT NOT NULL, personality_updates TEXT, memories_consolidated TEXT, duration_ms INTEGER NOT NULL);`);
@@ -96,7 +103,7 @@ export function initializeDatabase(): Database.Database {
         initializeVectorTable();
     }
 
-    console.log(`[MEMORY] Database initialized: ${DB_PATH}`);
+    console.log(`[MEMORY] Database initialized: ${dbPath}`);
     return db;
 }
 
@@ -266,12 +273,17 @@ export function getAllMemories(limit: number = 100, offset: number = 0): LongTer
 }
 
 /**
- * Update memory metadata
+ * Update memory metadata (merges with existing metadata)
  */
 export function updateMemoryMetadata(memoryId: string, metadata: Record<string, any>): void {
+    const memory = getMemory(memoryId);
+    if (!memory) return;
+
+    const updatedMetadata = { ...memory.metadata, ...metadata };
+
     const db = getDB();
     const stmt = db.prepare('UPDATE long_term_memories SET metadata = ? WHERE id = ?');
-    stmt.run(JSON.stringify(metadata), memoryId);
+    stmt.run(JSON.stringify(updatedMetadata), memoryId);
 }
 
 /**
@@ -432,6 +444,7 @@ export function bm25Search(query: string, limit: number = 10): Array<{ memory: L
                 access_count: row.access_count,
                 last_accessed: row.last_accessed,
                 tags: JSON.parse(row.tags),
+                metadata: row.metadata ? JSON.parse(row.metadata) : {},
                 source: row.source,
                 base_decay_rate: row.base_decay_rate,
             },
@@ -544,9 +557,10 @@ export function createLink(link: Omit<MemoryLink, 'id'>): string {
             last_updated = excluded.last_updated,
             weight = MIN(1.0, memory_links.weight + 0.05),
             co_retrieval_count = memory_links.co_retrieval_count + 1
+        RETURNING id
     `);
 
-    stmt.run(
+    const result = stmt.get(
         id,
         link.from_memory_id,
         link.to_memory_id,
@@ -554,11 +568,11 @@ export function createLink(link: Omit<MemoryLink, 'id'>): string {
         link.link_type,
         link.created_at,
         link.last_updated,
-        link.co_retrieval_count,
-        link.initial_similarity
-    );
+        link.co_retrieval_count || 0,
+        link.initial_similarity || 0.0
+    ) as any;
 
-    return id;
+    return result.id;
 }
 
 /**
@@ -810,12 +824,13 @@ export function closeDatabase(): void {
  */
 export function resetDatabase(): void {
     closeDatabase();
-    if (fs.existsSync(DB_PATH)) {
-        fs.unlinkSync(DB_PATH);
+    const dbPath = getDbPath();
+    if (fs.existsSync(dbPath)) {
+        fs.unlinkSync(dbPath);
         console.log('[MEMORY] Database file deleted');
     }
-    if (fs.existsSync(DB_PATH + '-wal')) fs.unlinkSync(DB_PATH + '-wal');
-    if (fs.existsSync(DB_PATH + '-shm')) fs.unlinkSync(DB_PATH + '-shm');
+    if (fs.existsSync(dbPath + '-wal')) fs.unlinkSync(dbPath + '-wal');
+    if (fs.existsSync(dbPath + '-shm')) fs.unlinkSync(dbPath + '-shm');
 
     // Re-initialize
     initializeDatabase();
