@@ -284,6 +284,18 @@ async function main() {
     await server.connect(transport);
     process.stdin.resume();
     console.error("Temporal Agent MCP Server running on stdio");
+
+    if (process.env.COGNEX_PREWARM === "1") {
+        setTimeout(async () => {
+            try {
+                const { prewarmModel } = await import("../agent/core/temporal/embedding.js");
+                await prewarmModel();
+            } catch (err) {
+                console.error("[EMBEDDING] Optional prewarm failed:", err);
+            }
+        }, 0);
+    }
+
     const keepAlive = setInterval(() => undefined, 60_000);
 
     const shutdown = async () => {
