@@ -297,18 +297,20 @@ export function spreadingActivation(
 
     const activatedMemories = new Map<string, ActivatedMemory>();
 
-    // Initialize with seed memories (full activation)
+    // Initialize with seed memories using their relevance scores as activation
     for (const result of seedMemories) {
+        const seedActivation = result.relevance_score ?? result.rrf_score ?? result.similarity ?? 1.0;
         activatedMemories.set(result.memory.id, {
             memory: result.memory,
-            activation: 1.0,
+            activation: seedActivation,
             depth: 0,
+            score: result.relevance_score ?? result.rrf_score,
         });
     }
 
     // BFS traversal of the graph
     const queue: Array<{ memoryId: string; depth: number; activation: number }> = seedMemories.map(
-        r => ({ memoryId: r.memory.id, depth: 0, activation: 1.0 })
+        r => ({ memoryId: r.memory.id, depth: 0, activation: r.relevance_score ?? r.rrf_score ?? r.similarity ?? 1.0 })
     );
 
     while (queue.length > 0) {
@@ -446,8 +448,9 @@ export async function retrieve(
         // are prioritized in STM and not evicted immediately.
         return searchResults.map(r => ({
             memory: r.memory,
-            activation: 1.0,
+            activation: r.relevance_score ?? r.rrf_score ?? r.similarity ?? 1.0,
             depth: 0,
+            score: r.relevance_score ?? r.rrf_score,
         }));
     }
 

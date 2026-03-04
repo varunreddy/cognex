@@ -7,10 +7,6 @@ import {
 import { retrieve, setGlobalRetrievalParams } from "../agent/core/temporal/retrieval.js";
 import { saveMemory } from "../agent/core/temporal/index.js";
 import { deleteMemory, getMemoryStats, getMemory, updateMemoryMetadata } from "../agent/core/temporal/memoryStore.js";
-import { prewarmModel } from "../agent/core/temporal/embedding.js";
-
-// Pre-warm local embedding model in background
-prewarmModel().catch(err => console.error("[EMBEDDING] Prewarm failed:", err));
 
 // Prevent MCP stdout contamination by routing all logs to stderr
 console.log = console.error;

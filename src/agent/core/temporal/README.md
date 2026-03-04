@@ -22,7 +22,7 @@ Memory in this system primarily constrains future actions based on history rathe
                          v
 ┌─────────────────────────────────────────────────────────────┐
 │              Semantic Search (Embeddings)                    │
-│  - OpenAI text-embedding-3-small (1536 dims)                 │
+│  - Xenova/all-MiniLM-L6-v2 (384 dims, local)                  │
 │  - Cosine similarity ranking                                 │
 └────────────────────────┬────────────────────────────────────┘
                          │
@@ -44,7 +44,7 @@ Memory in this system primarily constrains future actions based on history rathe
 ┌─────────────────────────────────────────────────────────────┐
 │          Short-term Memory (Working Context)                 │
 │  - TTL-based decay: min 60s, max 3600s                       │
-│  - Strength decays linearly over time                        │
+│  - Strength decays via sigmoid function                      │
 │  - Rehearsal effect: re-access extends TTL by 50%            │
 └────────────────────────┬────────────────────────────────────┘
                          │
@@ -259,21 +259,6 @@ Reflection is the agent analyzing its own behavior to generate insights and upda
 ```
 
 **Ablation flag:** `disableReflection` — reflection returns empty result
-## CLI Commands
-
-```bash
-# View memory statistics
-npm run dev -- memory stats
-
-# Search for memories
-npm run dev -- memory search "posts about gaming"
-
-# View active short-term context
-npm run dev -- memory active
-
-# Trigger self-reflection manually
-npm run dev -- memory reflect
-```
 
 ## Usage Examples
 
@@ -378,18 +363,8 @@ See [`src/eval/README.md`](../../../eval/README.md) for full evaluation document
 ## Future Enhancements
 
 - [ ] Forgetting mechanism (delete very old, low-importance memories)
-- [ ] Vector index (for faster semantic search at scale)
 - [ ] Multi-agent shared memory
 - [ ] Confidence scores for uncertain memories
-
-## Cost Considerations
-
-**Embeddings**: Using OpenAI `text-embedding-3-small`
-- $0.02 per 1M tokens
-- ~1 token per 4 characters
-- Example: 100 memories/day × 200 chars = ~$0.001/day
-
-**Alternative**: Use free local embeddings (Transformers.js) for zero API cost at the expense of speed.
 
 ## Philosophy
 

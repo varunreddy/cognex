@@ -10,25 +10,31 @@ import {
     initializeDatabase,
     createMemory,
     getMemory,
+    deleteMemory,
+    getAllMemories,
+    getMemoryStats,
     bm25Search,
     createLink,
-    updateMemoryMetadata
+    updateMemoryMetadata,
+    closeDatabase
 } from '../src/agent/core/temporal/memoryStore';
+
+function cleanupTestDb() {
+    for (const suffix of ['', '-wal', '-shm']) {
+        const p = testDbPath + suffix;
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+}
 
 describe('Memory Store Tests', () => {
     beforeAll(() => {
-        // Clean up any existing test DB
-        if (fs.existsSync(testDbPath)) {
-            fs.unlinkSync(testDbPath);
-        }
+        cleanupTestDb();
         initializeDatabase();
     });
 
     afterAll(() => {
-        // Clean up test DB
-        if (fs.existsSync(testDbPath)) {
-            fs.unlinkSync(testDbPath);
-        }
+        closeDatabase();
+        cleanupTestDb();
     });
 
     it('should save and retrieve memory with source: "search"', () => {
@@ -40,7 +46,7 @@ describe('Memory Store Tests', () => {
             importance: 0.8,
             arousal: 0,
             tags: ['test'],
-            source: 'search',  // Testing the newly added source type
+            source: 'search',
             base_decay_rate: 0.05
         });
 
@@ -139,15 +145,68 @@ describe('Memory Store Tests', () => {
             base_decay_rate: 0.05
         });
 
-        // Add a new key via partial update
         updateMemoryMetadata(id, { new_key: 'new_val' });
 
         const updatedMem = getMemory(id);
         expect(updatedMem).toBeDefined();
-
-        // Both the old and new keys should be present in metadata
-        expect(updatedMem?.metadata).toBeDefined();
         expect((updatedMem?.metadata as any)?.original_key).toBe('original_val');
         expect((updatedMem?.metadata as any)?.new_key).toBe('new_val');
+    });
+
+    it('deleteMemory should return true and memory should be gone', () => {
+        const id = createMemory({
+            created_at: new Date().toISOString(),
+            content: 'Memory to delete',
+            embedding: new Array(384).fill(0.1),
+            type: 'episodic',
+            importance: 0.5,
+            arousal: 0,
+            tags: [],
+            source: 'user_interaction',
+            base_decay_rate: 0.05
+        });
+
+        expect(getMemory(id)).toBeDefined();
+        const result = deleteMemory(id);
+        expect(result).toBe(true);
+        expect(getMemory(id)).toBeNull();
+    });
+
+    it('deleteMemory should return false for nonexistent ID', () => {
+        const result = deleteMemory('nonexistent-id-12345');
+        expect(result).toBe(false);
+    });
+
+    it('getMemoryStats should reflect correct counts', () => {
+        const stats = getMemoryStats();
+        expect(stats.total_memories).toBeGreaterThan(0);
+        expect(stats.episodic_count).toBeGreaterThanOrEqual(0);
+        expect(stats.semantic_count).toBeGreaterThanOrEqual(0);
+        expect(stats.total_memories).toBe(
+            stats.episodic_count + stats.semantic_count + stats.procedural_count
+        );
+    });
+
+    it('getAllMemories should respect limit', () => {
+        // Create a few extra memories to ensure we have enough
+        for (let i = 0; i < 3; i++) {
+            createMemory({
+                created_at: new Date().toISOString(),
+                content: `Limit test memory ${i}`,
+                embedding: new Array(384).fill(0.1),
+                type: 'episodic',
+                importance: 0.5,
+                arousal: 0,
+                tags: [],
+                source: 'user_interaction',
+                base_decay_rate: 0.05
+            });
+        }
+
+        const limited = getAllMemories(2);
+        expect(limited).toHaveLength(2);
+
+        const all = getAllMemories(100);
+        expect(all.length).toBeGreaterThan(2);
     });
 });

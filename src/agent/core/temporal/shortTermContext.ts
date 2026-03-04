@@ -364,27 +364,6 @@ export function getActiveMemories(): Array<{ memory: LongTermMemory; slot: Short
 }
 
 /**
- * Get human-readable age of a memory
- */
-function getMemoryAge(timestamp: string): string {
-    const created = new Date(timestamp);
-    const now = new Date();
-    const ageMs = now.getTime() - created.getTime();
-
-    const ageMinutes = ageMs / (1000 * 60);
-    const ageHours = ageMs / (1000 * 60 * 60);
-    const ageDays = ageMs / (1000 * 60 * 60 * 24);
-
-    if (ageMinutes < 60) {
-        return `${Math.round(ageMinutes)}m ago`;
-    } else if (ageHours < 24) {
-        return `${Math.round(ageHours)}h ago`;
-    } else {
-        return `${Math.round(ageDays)}d ago`;
-    }
-}
-
-/**
  * Clear all short-term context (hard reset)
  */
 export function clearShortTermContext(): void {
